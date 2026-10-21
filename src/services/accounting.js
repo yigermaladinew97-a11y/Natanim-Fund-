@@ -1,0 +1,364 @@
+const crypto = require('node:crypto');
+const { getDatabase } = require('../db');
+const { getCurrentYearMonth, getDueDateForMonth } = require('../utils/formatters');
+const { isValidYearMonth, isValidPaymentMethod, sanitizeText } = require('../utils/validators');
+
+function getSetting(key, fallback = null) {
+  const db = getDatabase();
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+  return row ? row.value : fallback;
+}
+
+function setSetting(key, value, actorTelegramId) {
+  const db = getDatabase();
+  db.prepare(`
+    INSERT INTO settings (key, value, updated_at)
+    VALUES (?, ?, datetime('now'))
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
+  `).run(key, String(value));
+
+  db.prepare(`
+    INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
+    VALUES (?, ?, ?, ?, ?)
+  `).run('UPDATE_SETTING', 'settings', key, String(actorTelegramId), JSON.stringify({ key, value }));
+}
+
+function getStandardAmountCents() {
+  const val = getSetting('standard_amount_cents');
+  return val ? parseInt(val, 10) : 50000;
+}
+
+function setStandardAmountCents(amountCents, actorTelegramId) {
+  if (!Number.isInteger(amountCents) || amountCents <= 0) {
+    throw new Error('Standard contribution amount must be a positive integer in minor units (cents).');
+  }
+  setSetting('standard_amount_cents', amountCents, actorTelegramId);
+}
+
+function getCurrency() {
+  return getSetting('currency', 'ETB');
+}
+
+function getDueDayOfMonth() {
+  const val = getSetting('due_day_of_month');
+  return val ? parseInt(val, 10) : 10;
+}
+
+function generateTxId() {
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const randomPart = crypto.randomBytes(3).toString('hex').toUpperCase();
+  return `TX-${dateStr}-${randomPart}`;
+}
+
+function getOrCreateObligation(memberId, yearMonth) {
+  if (!isValidYearMonth(yearMonth)) {
+    throw new Error(`Invalid year-month format: "${yearMonth}". Expected YYYY-MM.`);
+  }
+
+  const db = getDatabase();
+  const existing = db.prepare('SELECT * FROM obligations WHERE member_id = ? AND year_month = ?').get(memberId, yearMonth);
+  if (existing) {
+    return existing;
+  }
+
+  const standardAmount = getStandardAmountCents();
+  const dueDay = getDueDayOfMonth();
+  const dueDate = getDueDateForMonth(yearMonth, dueDay);
+
+  db.prepare(`
+    INSERT INTO obligations (member_id, year_month, amount_due_cents, amount_paid_cents, status, due_date)
+    VALUES (?, ?, ?, 0, 'UNPAID', ?)
+  `).run(memberId, yearMonth, standardAmount, dueDate);
+
+  return db.prepare('SELECT * FROM obligations WHERE member_id = ? AND year_month = ?').get(memberId, yearMonth);
+}
+
+function ensureMonthlyObligations(yearMonth) {
+  const db = getDatabase();
+  const activeMembers = db.prepare("SELECT id FROM members WHERE status = 'active'").all();
+  const standardAmount = getStandardAmountCents();
+  const dueDay = getDueDayOfMonth();
+  const dueDate = getDueDateForMonth(yearMonth, dueDay);
+
+  const insertStmt = db.prepare(`
+    INSERT OR IGNORE INTO obligations (member_id, year_month, amount_due_cents, amount_paid_cents, status, due_date)
+    VALUES (?, ?, ?, 0, 'UNPAID', ?)
+  `);
+
+  const runAll = db.transaction((members) => {
+    let createdCount = 0;
+    for (const m of members) {
+      const res = insertStmt.run(m.id, yearMonth, standardAmount, dueDate);
+      if (res.changes > 0) createdCount++;
+    }
+    return createdCount;
+  });
+
+  return runAll(activeMembers);
+}
+
+function updateObligationStatus(db, obligationId) {
+  const obligation = db.prepare('SELECT * FROM obligations WHERE id = ?').get(obligationId);
+  if (!obligation) return null;
+
+  // Calculate sum of valid, non-reversed payments
+  const sumRow = db.prepare(`
+    SELECT COALESCE(SUM(amount_cents), 0) AS total_paid
+    FROM payments
+    WHERE obligation_id = ? AND is_reversed = 0
+  `).get(obligationId);
+
+  const totalPaid = sumRow.total_paid;
+  let newStatus = 'UNPAID';
+
+  if (totalPaid >= obligation.amount_due_cents) {
+    newStatus = 'FULLY_PAID';
+  } else if (totalPaid > 0) {
+    newStatus = 'PARTIALLY_PAID';
+  } else {
+    // Check if overdue
+    const today = new Date().toISOString().slice(0, 10);
+    if (today > obligation.due_date) {
+      newStatus = 'OVERDUE';
+    } else {
+      newStatus = 'UNPAID';
+    }
+  }
+
+  db.prepare(`
+    UPDATE obligations
+    SET amount_paid_cents = ?, status = ?, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(totalPaid, newStatus, obligationId);
+
+  return db.prepare('SELECT * FROM obligations WHERE id = ?').get(obligationId);
+}
+
+function recordPayment({
+  memberId,
+  yearMonth,
+  amountCents,
+  paymentMethod,
+  referenceNumber,
+  notes,
+  recordedBy,
+}) {
+  if (!isValidPaymentMethod(paymentMethod)) {
+    throw new Error(`Invalid payment method: "${paymentMethod}". Allowed: cash, bank_transfer, mobile_money.`);
+  }
+
+  if (!Number.isInteger(amountCents) || amountCents <= 0) {
+    throw new Error('Payment amount must be a positive integer in minor units (cents).');
+  }
+
+  const cleanRef = sanitizeText(referenceNumber, 100);
+  const cleanNotes = sanitizeText(notes, 255);
+  const month = yearMonth || getCurrentYearMonth();
+
+  const db = getDatabase();
+
+  const member = db.prepare('SELECT * FROM members WHERE id = ?').get(memberId);
+  if (!member) {
+    throw new Error('Member not found.');
+  }
+
+  const tx = db.transaction(() => {
+    // 1. Get or create obligation
+    const obligation = getOrCreateObligation(memberId, month);
+
+    // 2. Generate unique TX ID
+    const txId = generateTxId();
+
+    // 3. Insert payment record
+    const insertRes = db.prepare(`
+      INSERT INTO payments (
+        tx_id, member_id, obligation_id, amount_cents, payment_method,
+        reference_number, notes, recorded_by, created_at, is_reversed
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0)
+    `).run(
+      txId,
+      memberId,
+      obligation.id,
+      amountCents,
+      paymentMethod,
+      cleanRef,
+      cleanNotes,
+      String(recordedBy)
+    );
+
+    const paymentId = insertRes.lastInsertRowid;
+
+    // 4. Update obligation status and total paid
+    const updatedObligation = updateObligationStatus(db, obligation.id);
+
+    // 5. Audit log
+    db.prepare(`
+      INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
+      VALUES (?, ?, ?, ?, ?)
+    `).run('RECORD_PAYMENT', 'payments', String(paymentId), String(recordedBy), JSON.stringify({
+      txId,
+      memberId,
+      memberName: member.full_name,
+      amountCents,
+      month,
+      paymentMethod,
+      referenceNumber: cleanRef,
+    }));
+
+    const payment = db.prepare('SELECT * FROM payments WHERE id = ?').get(paymentId);
+    return {
+      payment,
+      obligation: updatedObligation,
+      member,
+    };
+  });
+
+  return tx();
+}
+
+function reversePayment({ paymentId, txId, reason, reversedBy }) {
+  const cleanReason = sanitizeText(reason, 255);
+  if (!cleanReason || cleanReason.length < 3) {
+    throw new Error('A reversal reason is required (at least 3 characters).');
+  }
+
+  const db = getDatabase();
+
+  const tx = db.transaction(() => {
+    let payment = null;
+    if (paymentId) {
+      payment = db.prepare('SELECT * FROM payments WHERE id = ?').get(paymentId);
+    } else if (txId) {
+      payment = db.prepare('SELECT * FROM payments WHERE tx_id = ?').get(txId);
+    }
+
+    if (!payment) {
+      throw new Error('Payment record not found.');
+    }
+
+    if (payment.is_reversed === 1) {
+      throw new Error(`Payment ${payment.tx_id} is already reversed.`);
+    }
+
+    // Mark payment as reversed
+    db.prepare(`
+      UPDATE payments
+      SET is_reversed = 1,
+          reversed_at = datetime('now'),
+          reversed_by = ?,
+          reversal_reason = ?
+      WHERE id = ?
+    `).run(String(reversedBy), cleanReason, payment.id);
+
+    // Insert payment_reversals audit entry
+    db.prepare(`
+      INSERT INTO payment_reversals (payment_id, tx_id, reversed_by, reason)
+      VALUES (?, ?, ?, ?)
+    `).run(payment.id, payment.tx_id, String(reversedBy), cleanReason);
+
+    // Recalculate obligation
+    const updatedObligation = updateObligationStatus(db, payment.obligation_id);
+
+    // Audit log
+    db.prepare(`
+      INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
+      VALUES (?, ?, ?, ?, ?)
+    `).run('REVERSE_PAYMENT', 'payments', String(payment.id), String(reversedBy), JSON.stringify({
+      txId: payment.tx_id,
+      amountCents: payment.amount_cents,
+      reason: cleanReason,
+    }));
+
+    const reversedPayment = db.prepare('SELECT * FROM payments WHERE id = ?').get(payment.id);
+    return {
+      payment: reversedPayment,
+      obligation: updatedObligation,
+    };
+  });
+
+  return tx();
+}
+
+function getMemberObligation(memberId, yearMonth) {
+  const db = getDatabase();
+  return db.prepare('SELECT * FROM obligations WHERE member_id = ? AND year_month = ?').get(memberId, yearMonth);
+}
+
+function listMemberObligations(memberId, limit = 12) {
+  const db = getDatabase();
+  return db.prepare(`
+    SELECT * FROM obligations
+    WHERE member_id = ?
+    ORDER BY year_month DESC
+    LIMIT ?
+  `).all(memberId, limit);
+}
+
+function listMemberPayments(memberId, limit = 15) {
+  const db = getDatabase();
+  return db.prepare(`
+    SELECT p.*, o.year_month
+    FROM payments p
+    JOIN obligations o ON p.obligation_id = o.id
+    WHERE p.member_id = ?
+    ORDER BY p.created_at DESC
+    LIMIT ?
+  `).all(memberId, limit);
+}
+
+function getMemberOutstandingTotal(memberId) {
+  const db = getDatabase();
+  const row = db.prepare(`
+    SELECT COALESCE(SUM(amount_due_cents - amount_paid_cents), 0) AS total_outstanding
+    FROM obligations
+    WHERE member_id = ? AND amount_paid_cents < amount_due_cents
+  `).get(memberId);
+  return row ? row.total_outstanding : 0;
+}
+
+function listUnpaidMembersForMonth(yearMonth) {
+  const db = getDatabase();
+  return db.prepare(`
+    SELECT m.id AS member_id, m.full_name, m.telegram_id, m.phone,
+           o.year_month, o.amount_due_cents, o.amount_paid_cents,
+           (o.amount_due_cents - o.amount_paid_cents) AS balance_cents,
+           o.status, o.due_date
+    FROM members m
+    JOIN obligations o ON m.id = o.member_id
+    WHERE m.status = 'active'
+      AND o.year_month = ?
+      AND o.amount_paid_cents < o.amount_due_cents
+    ORDER BY m.full_name COLLATE NOCASE ASC
+  `).all(yearMonth);
+}
+
+function getPaymentByTxId(txId) {
+  const db = getDatabase();
+  return db.prepare(`
+    SELECT p.*, m.full_name, o.year_month
+    FROM payments p
+    JOIN members m ON p.member_id = m.id
+    JOIN obligations o ON p.obligation_id = o.id
+    WHERE p.tx_id = ?
+  `).get(txId);
+}
+
+module.exports = {
+  getSetting,
+  setSetting,
+  getStandardAmountCents,
+  setStandardAmountCents,
+  getCurrency,
+  getDueDayOfMonth,
+  getOrCreateObligation,
+  ensureMonthlyObligations,
+  recordPayment,
+  reversePayment,
+  getMemberObligation,
+  listMemberObligations,
+  listMemberPayments,
+  getMemberOutstandingTotal,
+  listUnpaidMembersForMonth,
+  getPaymentByTxId,
+};
+

@@ -1,0 +1,30 @@
+{
+  "name": "natanim-fund-bot",
+  "version": "1.0.0",
+  "description": "Church Monthly Contribution Telegram Bot for Natanim Fund",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test tests/**/*.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yigermaladinew97-a11y/Natanim-Fund-.git"
+  },
+  "keywords": [
+    "telegram-bot",
+    "church-fund",
+    "contribution-manager",
+    "telegraf",
+    "sqlite"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "dotenv": "^18.0.8",
+    "node-cron": "^3.0.3",
+    "telegraf": "^4.16.3"
+  }
+}
