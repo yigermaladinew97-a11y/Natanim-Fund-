@@ -48,6 +48,32 @@ function initDatabase(customPath) {
         VALUES (?, ?, ?, ?, ?)
       `).run('INITIALIZE_SUPERADMIN', 'roles', config.adminTelegramId, 'SYSTEM', JSON.stringify({ role: 'admin' }));
     }
+
+  // Auto-register Super Admin as a contributing church member in real database so /mystatus, /history, and testing work right away
+  if (!customPath && config.adminTelegramId) {
+    const existingMember = db.prepare('SELECT id FROM members WHERE telegram_id = ?').get(config.adminTelegramId);
+    if (!existingMember) {
+      const today = new Date().toISOString().slice(0, 10);
+      const res = db.prepare(`
+        INSERT OR IGNORE INTO members (telegram_id, full_name, phone, status, joined_date, notes)
+        VALUES (?, 'Church Administrator', '', 'active', ?, 'Initial Church Team Leader')
+      `).run(config.adminTelegramId, today);
+
+      if (res.changes > 0) {
+        const memberId = res.lastInsertRowid;
+        const currentMonth = today.slice(0, 7);
+        const dueDay = config.dueDayOfMonth || 10;
+        const dueDate = `${currentMonth}-${String(dueDay).padStart(2, '0')}`;
+        const stdAmountRow = db.prepare("SELECT value FROM settings WHERE key = 'standard_amount_cents'").get();
+        const stdAmount = stdAmountRow ? parseInt(stdAmountRow.value, 10) : 50000;
+
+        db.prepare(`
+          INSERT OR IGNORE INTO obligations (member_id, year_month, amount_due_cents, amount_paid_cents, status, due_date)
+          VALUES (?, ?, ?, 0, 'UNPAID', ?)
+        `).run(memberId, currentMonth, stdAmount, dueDate);
+      }
+    }
+  }
   }
 
   dbInstance = db;

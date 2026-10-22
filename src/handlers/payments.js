@@ -9,7 +9,18 @@ const { getPaymentMethodKeyboard, getCancelKeyboard, getConfirmationKeyboard } =
 function startPaymentWizard(ctx) {
   const members = getAllActiveMembers();
   if (members.length === 0) {
-    return ctx.reply('⚠️ No active members available in the database. Please add members first via /addmember.');
+    return ctx.reply(
+      '⚠️ *No active members found in the database yet.*\n\n' +
+      'Please add a member first, or add demo church members to test the bot:',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('➕ Register Member', 'menu_addmember')],
+          [Markup.button.callback('🌱 Add 3 Demo Members For Testing', 'admin_seed_demo')],
+          [Markup.button.callback('❌ Cancel', 'action_cancel')],
+        ]),
+      }
+    );
   }
 
   // Display top active members as inline buttons or let them type member ID

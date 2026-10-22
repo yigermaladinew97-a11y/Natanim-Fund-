@@ -3,8 +3,15 @@ const { isValidTelegramId, sanitizeText } = require('../utils/validators');
 const { getCurrentYearMonth, getDueDateForMonth } = require('../utils/formatters');
 
 function registerMember({ telegramId, fullName, phone, joinedDate, notes, actorTelegramId }) {
-  if (!isValidTelegramId(telegramId)) {
-    throw new Error('Invalid Telegram ID. It must be a positive numeric ID (e.g. 123456789).');
+  let tid = telegramId ? String(telegramId).trim() : null;
+
+  if (!tid || tid.toLowerCase() === 'skip' || tid.toLowerCase() === 'none') {
+    // Generate a unique church membership identifier if Telegram ID is not yet known
+    const cleanDigits = phone ? phone.replace(/\D/g, '') : '';
+    const rand = Math.floor(100000 + Math.random() * 900000);
+    tid = cleanDigits.length >= 7 ? `CHURCH_${cleanDigits}` : `CHURCH_${Date.now()}_${rand}`;
+  } else if (!isValidTelegramId(tid) && !tid.startsWith('CHURCH_') && !tid.startsWith('PHONE_')) {
+    throw new Error('Invalid Telegram ID. It must be a positive numeric ID (e.g. 123456789) or "skip".');
   }
 
   const cleanName = sanitizeText(fullName, 100);
@@ -18,7 +25,7 @@ function registerMember({ telegramId, fullName, phone, joinedDate, notes, actorT
 
   const db = getDatabase();
 
-  const existing = db.prepare('SELECT * FROM members WHERE telegram_id = ?').get(String(telegramId));
+  const existing = db.prepare('SELECT * FROM members WHERE telegram_id = ?').get(tid);
   if (existing) {
     if (existing.status === 'active') {
       throw new Error(`Member "${existing.full_name}" is already registered and active.`);
@@ -47,7 +54,7 @@ function registerMember({ telegramId, fullName, phone, joinedDate, notes, actorT
     const result = db.prepare(`
       INSERT INTO members (telegram_id, full_name, phone, status, joined_date, notes)
       VALUES (?, ?, ?, 'active', ?, ?)
-    `).run(String(telegramId), cleanName, cleanPhone, joinDate, cleanNotes);
+    `).run(tid, cleanName, cleanPhone, joinDate, cleanNotes);
 
     const memberId = result.lastInsertRowid;
 
@@ -71,7 +78,7 @@ function registerMember({ telegramId, fullName, phone, joinedDate, notes, actorT
       INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
       VALUES (?, ?, ?, ?, ?)
     `).run('REGISTER_MEMBER', 'members', String(memberId), String(actorTelegramId), JSON.stringify({
-      telegramId: String(telegramId),
+      telegramId: tid,
       fullName: cleanName,
       phone: cleanPhone,
       joinedDate: joinDate,
@@ -148,6 +155,29 @@ function getAllActiveMembers() {
   return db.prepare("SELECT * FROM members WHERE status = 'active' ORDER BY full_name COLLATE NOCASE ASC").all();
 }
 
+function seedDemoMembers(actorTelegramId) {
+  const samples = [
+    { fullName: 'Yohannes Girma', phone: '+251911112233', telegramId: '987000101' },
+    { fullName: 'Marta Haile', phone: '+251922334455', telegramId: '987000102' },
+    { fullName: 'Dawit Tadesse', phone: '+251933445566', telegramId: '987000103' },
+  ];
+
+  const added = [];
+  for (const s of samples) {
+    try {
+      const m = registerMember({
+        telegramId: s.telegramId,
+        fullName: s.fullName,
+        phone: s.phone,
+        notes: 'Demo test member',
+        actorTelegramId,
+      });
+      added.push(m);
+    } catch (_) {}
+  }
+  return added;
+}
+
 module.exports = {
   registerMember,
   deactivateMember,
@@ -155,5 +185,5 @@ module.exports = {
   getMemberByTelegramId,
   listActiveMembers,
   getAllActiveMembers,
+  seedDemoMembers,
 };
-

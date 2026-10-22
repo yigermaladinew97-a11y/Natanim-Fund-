@@ -1,6 +1,7 @@
+const { Markup } = require('telegraf');
 const { getSession, setSession, clearSession } = require('../utils/session');
-const { isValidTelegramId, sanitizeText } = require('../utils/validators');
-const { registerMember, deactivateMember, getMemberById } = require('../services/memberService');
+const { isValidTelegramId, sanitizeText, isValidYearMonth } = require('../utils/validators');
+const { registerMember, deactivateMember, getMemberById, getAllActiveMembers } = require('../services/memberService');
 const {
   setStandardAmountCents,
   getStandardAmountCents,
@@ -9,7 +10,7 @@ const {
   getPaymentByTxId,
   getOrCreateObligation,
 } = require('../services/accounting');
-const { parseMoneyToCents, formatMoney } = require('../utils/formatters');
+const { parseMoneyToCents, formatMoney, getCurrentYearMonth } = require('../utils/formatters');
 const { getPaymentMethodKeyboard, getCancelKeyboard } = require('../utils/keyboards');
 const { showPaymentConfirmation } = require('./payments');
 
@@ -29,51 +30,74 @@ function registerWizardHandler(bot) {
     const text = ctx.message.text.trim();
 
     // ----------------------------------------------------
-    // ADDMEMBER WIZARD
+    // ADDMEMBER WIZARD (Name -> Phone -> Telegram ID)
     // ----------------------------------------------------
-    if (session.step === 'ADDMEMBER_WAIT_TELEGRAM_ID') {
-      if (!isValidTelegramId(text)) {
-        return ctx.reply('❌ Invalid Telegram ID. Please enter a valid numeric ID (5–15 digits):', getCancelKeyboard());
-      }
-      setSession(userId, { ...session, step: 'ADDMEMBER_WAIT_NAME', telegramId: text });
-      return ctx.reply('👤 *Step 2/3: Full Name*\nPlease enter the member\'s full legal or church name:', {
-        parse_mode: 'Markdown',
-        ...getCancelKeyboard(),
-      });
-    }
-
     if (session.step === 'ADDMEMBER_WAIT_NAME') {
       const cleanName = sanitizeText(text, 100);
       if (!cleanName || cleanName.length < 2) {
         return ctx.reply('❌ Please enter a valid name (at least 2 characters):', getCancelKeyboard());
       }
       setSession(userId, { ...session, step: 'ADDMEMBER_WAIT_PHONE', fullName: cleanName });
-      return ctx.reply('📞 *Step 3/3: Phone Number*\nEnter the member\'s phone number, or reply with `skip`:', {
-        parse_mode: 'Markdown',
-        ...getCancelKeyboard(),
-      });
+      return ctx.reply(
+        `👤 *Name:* ${cleanName}\n\n` +
+        `📞 *Step 2/3: Phone Number*\n` +
+        `Enter the member's phone number (e.g. \`0911223344\`), or reply with \`skip\`:`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('⏩ Skip Phone', 'addmember_skip_phone')],
+            [Markup.button.callback('❌ Cancel', 'action_cancel')],
+          ]),
+        }
+      );
     }
 
     if (session.step === 'ADDMEMBER_WAIT_PHONE') {
       const phone = text.toLowerCase() === 'skip' ? null : sanitizeText(text, 30);
-      clearSession(userId);
+      setSession(userId, { ...session, step: 'ADDMEMBER_WAIT_TELEGRAM_ID', phone });
+      return ctx.reply(
+        `📞 *Phone:* ${phone || 'Not provided'}\n\n` +
+        `📱 *Step 3/3: Telegram User ID*\n` +
+        `Enter the member's *numeric Telegram ID* (e.g. \`123456789\`), or tap *Skip* if they haven't joined Telegram yet:`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('⏩ Skip / Create Church ID', 'addmember_skip_tg')],
+            [Markup.button.callback('❌ Cancel', 'action_cancel')],
+          ]),
+        }
+      );
+    }
 
+    if (session.step === 'ADDMEMBER_WAIT_TELEGRAM_ID') {
+      let tid = text.toLowerCase() === 'skip' ? null : text;
+      if (tid && !isValidTelegramId(tid)) {
+        return ctx.reply(
+          '❌ Invalid Telegram ID. Please enter a valid numeric ID (5–15 digits) or tap Skip below:',
+          Markup.inlineKeyboard([
+            [Markup.button.callback('⏩ Skip / Create Church ID', 'addmember_skip_tg')],
+            [Markup.button.callback('❌ Cancel', 'action_cancel')],
+          ])
+        );
+      }
+
+      clearSession(userId);
       try {
         const member = registerMember({
-          telegramId: session.telegramId,
+          telegramId: tid,
           fullName: session.fullName,
-          phone,
+          phone: session.phone,
           actorTelegramId: userId,
         });
 
         return ctx.reply(
-          `✅ *Member Successfully Registered!*\n\n` +
-          `• *ID:* #${member.id}\n` +
-          `• *Name:* ${member.full_name}\n` +
-          `• *Telegram ID:* \`${member.telegram_id}\`\n` +
+          `🎉 *Member Successfully Registered!*\n\n` +
+          `• *Member ID:* #${member.id}\n` +
+          `• *Full Name:* ${member.full_name}\n` +
           `• *Phone:* ${member.phone || 'Not provided'}\n` +
-          `• *Joined:* ${member.joined_date}\n\n` +
-          `Monthly contribution obligation initialized.`,
+          `• *Telegram ID:* \`${member.telegram_id}\`\n` +
+          `• *Joined Date:* ${member.joined_date}\n\n` +
+          `_Current month contribution obligation initialized._`,
           { parse_mode: 'Markdown' }
         );
       } catch (err) {
@@ -168,8 +192,82 @@ function registerWizardHandler(bot) {
     }
 
     // ----------------------------------------------------
-    // RECORD PAYMENT CUSTOM TEXT INPUTS
+    // RECORD PAYMENT TEXT INPUTS
     // ----------------------------------------------------
+    if (session.step === 'PAY_SELECT_MEMBER') {
+      const cleanInput = text.replace(/#/g, '').trim();
+      const allMembers = getAllActiveMembers();
+      let matched = null;
+
+      // Try matching by numeric ID
+      if (/^\d+$/.test(cleanInput)) {
+        matched = getMemberById(parseInt(cleanInput, 10));
+      }
+      // Or try matching by name
+      if (!matched) {
+        matched = allMembers.find((m) => m.full_name.toLowerCase().includes(cleanInput.toLowerCase()));
+      }
+
+      if (!matched) {
+        return ctx.reply('❌ Member not found. Please type their Member ID (#1, #2) or select from buttons above:', getCancelKeyboard());
+      }
+
+      const currentMonth = getCurrentYearMonth();
+      setSession(userId, {
+        step: 'PAY_SELECT_MONTH',
+        memberId: matched.id,
+        memberName: matched.full_name,
+      });
+
+      return ctx.reply(
+        `👤 *Selected Member:* ${matched.full_name} (#${matched.id})\n\n` +
+        `*Step 2/5 — Contribution Period:*\n` +
+        `Reply with month (e.g. \`${currentMonth}\`) or tap button:`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback(`📅 Current Month (${currentMonth})`, `pay_month_${currentMonth}`)],
+            [Markup.button.callback('❌ Cancel', 'action_cancel')],
+          ]),
+        }
+      );
+    }
+
+    if (session.step === 'PAY_SELECT_MONTH') {
+      if (!isValidYearMonth(text)) {
+        return ctx.reply('❌ Invalid month format. Please use `YYYY-MM` (e.g. `2026-10`):', getCancelKeyboard());
+      }
+      const yearMonth = text;
+      const obligation = getOrCreateObligation(session.memberId, yearMonth);
+      const currency = getCurrency();
+      const balanceCents = Math.max(0, obligation.amount_due_cents - obligation.amount_paid_cents);
+
+      setSession(userId, {
+        ...session,
+        step: 'PAY_ENTER_AMOUNT',
+        yearMonth,
+        balanceCents,
+        dueCents: obligation.amount_due_cents,
+      });
+
+      const quickButtons = [];
+      if (balanceCents > 0) {
+        quickButtons.push([
+          Markup.button.callback(`Pay Full Remaining (${formatMoney(balanceCents, currency)})`, `pay_amt_${balanceCents}`),
+        ]);
+      }
+      quickButtons.push([Markup.button.callback('❌ Cancel', 'action_cancel')]);
+
+      return ctx.reply(
+        `📅 *Month:* ${yearMonth}\n` +
+        `🎯 *Due for Month:* ${formatMoney(obligation.amount_due_cents, currency)}\n` +
+        `💰 *Outstanding Balance:* ${formatMoney(balanceCents, currency)}\n\n` +
+        `*Step 3/5 — Payment Amount:*\n` +
+        `Click button or reply with an amount (e.g. \`500\` or \`250\`):`,
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard(quickButtons) }
+      );
+    }
+
     if (session.step === 'PAY_ENTER_AMOUNT') {
       const cents = parseMoneyToCents(text);
       if (!cents) {
@@ -202,9 +300,63 @@ function registerWizardHandler(bot) {
 
     return next();
   });
+
+  // Action callbacks for skipping steps in Add Member
+  bot.action('addmember_skip_phone', async (ctx) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const session = getSession(userId);
+    if (!session || !session.fullName) {
+      return ctx.reply('Session expired. Please start again with /addmember.');
+    }
+    setSession(userId, { ...session, step: 'ADDMEMBER_WAIT_TELEGRAM_ID', phone: null });
+    await ctx.reply(
+      `📞 *Phone:* Skipped\n\n` +
+      `📱 *Step 3/3: Telegram User ID*\n` +
+      `Enter the member's *numeric Telegram ID* (e.g. \`123456789\`), or tap *Skip* below:`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('⏩ Skip / Create Church ID', 'addmember_skip_tg')],
+          [Markup.button.callback('❌ Cancel', 'action_cancel')],
+        ]),
+      }
+    );
+  });
+
+  bot.action('addmember_skip_tg', async (ctx) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const session = getSession(userId);
+    if (!session || !session.fullName) {
+      return ctx.reply('Session expired. Please start again with /addmember.');
+    }
+
+    clearSession(userId);
+    try {
+      const member = registerMember({
+        telegramId: null,
+        fullName: session.fullName,
+        phone: session.phone,
+        actorTelegramId: userId,
+      });
+
+      return ctx.reply(
+        `🎉 *Member Successfully Registered!*\n\n` +
+        `• *Member ID:* #${member.id}\n` +
+        `• *Full Name:* ${member.full_name}\n` +
+        `• *Phone:* ${member.phone || 'Not provided'}\n` +
+        `• *System ID:* \`${member.telegram_id}\`\n` +
+        `• *Joined Date:* ${member.joined_date}\n\n` +
+        `_Current month contribution obligation initialized._`,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (err) {
+      return ctx.reply(`❌ Registration failed: ${err.message}`);
+    }
+  });
 }
 
 module.exports = {
   registerWizardHandler,
 };
-

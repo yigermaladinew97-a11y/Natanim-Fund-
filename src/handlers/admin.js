@@ -50,29 +50,63 @@ function registerAdminHandlers(bot) {
     }
 
     // Otherwise start guided wizard
-    setSession(ctx.from.id, { step: 'ADDMEMBER_WAIT_TELEGRAM_ID' });
+    setSession(ctx.from.id, { step: 'ADDMEMBER_WAIT_NAME' });
     await ctx.reply(
       '👤 *Register New Member — Step 1/3*\n\n' +
-      'Please enter the member\'s *numeric Telegram User ID*.\n' +
-      '_(The member can find their numeric ID using @userinfobot or by starting this bot)_',
+      'Please enter the member\'s *Full Name* (e.g. `Brother Daniel Bekele`):\n\n' +
+      '_(You can also add sample members for testing with /seed)_',
       {
         parse_mode: 'Markdown',
-        ...getCancelKeyboard(),
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🌱 Add 3 Demo Members For Testing', 'admin_seed_demo')],
+          [Markup.button.callback('❌ Cancel', 'action_cancel')],
+        ]),
       }
     );
   });
 
   bot.action('menu_addmember', requireAdmin, async (ctx) => {
     await ctx.answerCbQuery();
-    setSession(ctx.from.id, { step: 'ADDMEMBER_WAIT_TELEGRAM_ID' });
+    setSession(ctx.from.id, { step: 'ADDMEMBER_WAIT_NAME' });
     await ctx.reply(
       '👤 *Register New Member — Step 1/3*\n\n' +
-      'Please enter the member\'s *numeric Telegram User ID*:\n' +
-      '_(Example: 123456789)_',
+      'Please enter the member\'s *Full Name* (e.g. `Brother Daniel Bekele`):\n\n' +
+      '_(You can also add sample members for testing with /seed)_',
       {
         parse_mode: 'Markdown',
-        ...getCancelKeyboard(),
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🌱 Add 3 Demo Members For Testing', 'admin_seed_demo')],
+          [Markup.button.callback('❌ Cancel', 'action_cancel')],
+        ]),
       }
+    );
+  });
+
+  // Seed demo members command
+  bot.command('seed', requireAdmin, async (ctx) => {
+    const { seedDemoMembers } = require('../services/memberService');
+    const added = seedDemoMembers(ctx.from.id);
+    await ctx.reply(
+      `🌱 *Added ${added.length} Demo Church Members!*\n\n` +
+      `1. Yohannes Girma (#987000101)\n` +
+      `2. Marta Haile (#987000102)\n` +
+      `3. Dawit Tadesse (#987000103)\n\n` +
+      `You can now test /paid, /report, /unpaid, /members, and /export right away!`,
+      { parse_mode: 'Markdown' }
+    );
+  });
+
+  bot.action('admin_seed_demo', requireAdmin, async (ctx) => {
+    await ctx.answerCbQuery();
+    const { seedDemoMembers } = require('../services/memberService');
+    const added = seedDemoMembers(ctx.from.id);
+    await ctx.reply(
+      `🌱 *Added ${added.length} Demo Church Members!*\n\n` +
+      `1. Yohannes Girma (#987000101)\n` +
+      `2. Marta Haile (#987000102)\n` +
+      `3. Dawit Tadesse (#987000103)\n\n` +
+      `You can now test /paid, /report, /unpaid, /members, and /export right away!`,
+      { parse_mode: 'Markdown' }
     );
   });
 
