@@ -1,6 +1,6 @@
 const crypto = require('node:crypto');
 const { getDatabase } = require('../db');
-const { getCurrentYearMonth, getDueDateForMonth } = require('../utils/formatters');
+const { getCurrentYearMonth, getDueDateForMonth, getNextMonthsList } = require('../utils/formatters');
 const { isValidYearMonth, isValidPaymentMethod, sanitizeText } = require('../utils/validators');
 
 function getSetting(key, fallback = null) {
@@ -25,7 +25,7 @@ function setSetting(key, value, actorTelegramId) {
 
 function getStandardAmountCents() {
   const val = getSetting('standard_amount_cents');
-  return val ? parseInt(val, 10) : 50000;
+  return val ? parseInt(val, 10) : 5000; // 50.00 ETB default
 }
 
 function setStandardAmountCents(amountCents, actorTelegramId) {
@@ -216,6 +216,109 @@ function recordPayment({
   return tx();
 }
 
+function recordMultiMonthPayment({
+  memberId,
+  startYearMonth,
+  monthsCount = 1,
+  totalAmountCents,
+  paymentMethod,
+  referenceNumber,
+  notes,
+  recordedBy,
+}) {
+  if (!isValidPaymentMethod(paymentMethod)) {
+    throw new Error(`Invalid payment method: "${paymentMethod}". Allowed: cash, bank_transfer, mobile_money.`);
+  }
+
+  const cleanRef = sanitizeText(referenceNumber, 100);
+  const cleanNotes = sanitizeText(notes, 255);
+  const startMonth = startYearMonth || getCurrentYearMonth();
+  const months = getNextMonthsList(startMonth, monthsCount);
+  const standardAmount = getStandardAmountCents();
+  const db = getDatabase();
+
+  const member = db.prepare('SELECT * FROM members WHERE id = ?').get(memberId);
+  if (!member) {
+    throw new Error('Member not found.');
+  }
+
+  let remainingPool = totalAmountCents || (standardAmount * monthsCount);
+  if (!Number.isInteger(remainingPool) || remainingPool <= 0) {
+    throw new Error('Payment amount must be a positive integer in minor units (cents).');
+  }
+
+  const tx = db.transaction(() => {
+    const recordedPayments = [];
+    const updatedObligations = [];
+    const batchTxId = generateTxId();
+
+    for (let i = 0; i < months.length; i++) {
+      const month = months[i];
+      const obligation = getOrCreateObligation(memberId, month);
+      const neededForMonth = Math.max(0, obligation.amount_due_cents - obligation.amount_paid_cents);
+
+      let payForThisMonth = 0;
+      if (i === months.length - 1) {
+        payForThisMonth = remainingPool;
+      } else {
+        payForThisMonth = Math.min(remainingPool, neededForMonth > 0 ? neededForMonth : standardAmount);
+      }
+
+      if (payForThisMonth <= 0) continue;
+      remainingPool -= payForThisMonth;
+
+      const subTxId = `${batchTxId}-${i + 1}`;
+      const insertRes = db.prepare(`
+        INSERT INTO payments (
+          tx_id, member_id, obligation_id, amount_cents, payment_method,
+          reference_number, notes, recorded_by, created_at, is_reversed
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0)
+      `).run(
+        subTxId,
+        memberId,
+        obligation.id,
+        payForThisMonth,
+        paymentMethod,
+        cleanRef,
+        cleanNotes ? `${cleanNotes} (${month})` : `Multi-month advance payment for ${month}`,
+        String(recordedBy)
+      );
+
+      const paymentId = insertRes.lastInsertRowid;
+      const updatedObl = updateObligationStatus(db, obligation.id);
+      const paymentObj = db.prepare('SELECT * FROM payments WHERE id = ?').get(paymentId);
+
+      recordedPayments.push(paymentObj);
+      updatedObligations.push(updatedObl);
+    }
+
+    // Audit log
+    db.prepare(`
+      INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
+      VALUES (?, ?, ?, ?, ?)
+    `).run('RECORD_MULTI_MONTH_PAYMENT', 'payments', batchTxId, String(recordedBy), JSON.stringify({
+      batchTxId,
+      memberId,
+      memberName: member.full_name,
+      monthsCovered: months,
+      totalAmountCents: (totalAmountCents || (standardAmount * monthsCount)),
+      paymentMethod,
+      referenceNumber: cleanRef,
+    }));
+
+    return {
+      batchTxId,
+      member,
+      monthsCovered: months,
+      payments: recordedPayments,
+      obligations: updatedObligations,
+      totalAmountCents: (totalAmountCents || (standardAmount * monthsCount)),
+    };
+  });
+
+  return tx();
+}
+
 function reversePayment({ paymentId, txId, reason, reversedBy }) {
   const cleanReason = sanitizeText(reason, 255);
   if (!cleanReason || cleanReason.length < 3) {
@@ -353,6 +456,7 @@ module.exports = {
   getOrCreateObligation,
   ensureMonthlyObligations,
   recordPayment,
+  recordMultiMonthPayment,
   reversePayment,
   getMemberObligation,
   listMemberObligations,

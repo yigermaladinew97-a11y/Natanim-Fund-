@@ -46,6 +46,10 @@ function registerPaymentHandlers(bot) {
     startPaymentWizard(ctx);
   });
 
+  bot.hears(/^(?:💰\s*)?Record Payment$/i, requireStaff, async (ctx) => {
+    startPaymentWizard(ctx);
+  });
+
   bot.action('menu_record_payment', requireStaff, async (ctx) => {
     await ctx.answerCbQuery();
     startPaymentWizard(ctx);

@@ -36,6 +36,24 @@ function getCurrentYearMonth() {
   return `${year}-${month}`;
 }
 
+function getNextMonth(yearMonth, offset = 1) {
+  const [yearStr, monthStr] = yearMonth.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  const date = new Date(Date.UTC(year, month - 1 + offset, 1));
+  const newY = date.getUTCFullYear();
+  const newM = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${newY}-${newM}`;
+}
+
+function getNextMonthsList(startYearMonth, count = 1) {
+  const list = [];
+  for (let i = 0; i < count; i++) {
+    list.push(getNextMonth(startYearMonth, i));
+  }
+  return list;
+}
+
 function getDueDateForMonth(yearMonth, dueDay = 10) {
   const [yearStr, monthStr] = yearMonth.split('-');
   const year = parseInt(yearStr, 10);
@@ -79,6 +97,8 @@ module.exports = {
   formatMoney,
   parseMoneyToCents,
   getCurrentYearMonth,
+  getNextMonth,
+  getNextMonthsList,
   getDueDateForMonth,
   formatStatus,
   formatPaymentMethod,

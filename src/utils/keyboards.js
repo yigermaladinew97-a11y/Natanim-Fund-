@@ -4,6 +4,31 @@ function getMainMenuKeyboard(role) {
   const buttons = [];
 
   // Member buttons
+  buttons.push(['📊 My Status', '📜 My History']);
+  buttons.push(['👤 My Profile']);
+
+  // Treasurer / Admin buttons
+  if (role === 'admin' || role === 'treasurer') {
+    buttons.push(['💰 Record Payment', '📑 Monthly Report']);
+    buttons.push(['👥 Members List', '⏳ Unpaid List']);
+    buttons.push(['📨 Send Reminders']);
+  }
+
+  // Admin exclusive buttons
+  if (role === 'admin') {
+    buttons.push(['➕ Add Member', '🛑 Deactivate Member']);
+    buttons.push(['⚙️ Set Standard Amount', '🛡️ Manage Roles']);
+    buttons.push(['🔄 Reverse Payment', '📁 Export CSV']);
+    buttons.push(['🔍 Audit Log']);
+  }
+
+  return Markup.keyboard(buttons).resize().persistent();
+}
+
+function getMainMenuInlineKeyboard(role) {
+  const buttons = [];
+
+  // Member buttons
   buttons.push([Markup.button.callback('📊 My Status', 'menu_mystatus'), Markup.button.callback('📜 My History', 'menu_history')]);
   buttons.push([Markup.button.callback('👤 My Profile', 'menu_myprofile')]);
 
@@ -44,6 +69,12 @@ function getCancelKeyboard() {
   ]);
 }
 
+function getCancelReplyKeyboard() {
+  return Markup.keyboard([
+    ['❌ Cancel Operation']
+  ]).resize();
+}
+
 function getConfirmationKeyboard(confirmAction, cancelAction = 'action_cancel') {
   return Markup.inlineKeyboard([
     [
@@ -67,8 +98,10 @@ function getPaginationKeyboard(prefix, currentPage, totalPages) {
 
 module.exports = {
   getMainMenuKeyboard,
+  getMainMenuInlineKeyboard,
   getPaymentMethodKeyboard,
   getCancelKeyboard,
+  getCancelReplyKeyboard,
   getConfirmationKeyboard,
   getPaginationKeyboard,
 };

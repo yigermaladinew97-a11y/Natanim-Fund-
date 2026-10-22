@@ -50,6 +50,27 @@ async function main() {
     // Start background cron jobs (scheduler)
     initScheduler(bot);
 
+    // Register Telegram native Menu Button commands
+    try {
+      await bot.telegram.setMyCommands([
+        { command: 'start', description: 'Open Main Menu & Welcome' },
+        { command: 'mystatus', description: 'Check monthly contribution status' },
+        { command: 'history', description: 'View payment & obligation history' },
+        { command: 'myprofile', description: 'View church member profile' },
+        { command: 'paid', description: 'Record verified payment (Staff)' },
+        { command: 'report', description: 'View monthly financial report (Staff)' },
+        { command: 'unpaid', description: 'List members with unpaid balances (Staff)' },
+        { command: 'members', description: 'Browse active members directory (Staff)' },
+        { command: 'remind', description: 'Send reminders to unpaid members (Staff)' },
+        { command: 'addmember', description: 'Register new member (Admin)' },
+        { command: 'help', description: 'Show all bot commands and guide' },
+        { command: 'cancel', description: 'Cancel current operation' },
+      ]);
+      console.log('[Bot] Telegram bot menu commands configured successfully.');
+    } catch (cmdErr) {
+      console.warn('[Bot] Note: Could not set Telegram menu commands:', cmdErr.message);
+    }
+
     // Start Telegram polling
     console.log('[Bot] Launching Natanim Fund Telegram bot (long polling)...');
     await bot.launch();

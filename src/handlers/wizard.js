@@ -11,8 +11,27 @@ const {
   getOrCreateObligation,
 } = require('../services/accounting');
 const { parseMoneyToCents, formatMoney, getCurrentYearMonth } = require('../utils/formatters');
-const { getPaymentMethodKeyboard, getCancelKeyboard } = require('../utils/keyboards');
+const { getPaymentMethodKeyboard, getCancelKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
 const { showPaymentConfirmation } = require('./payments');
+
+const MENU_BUTTON_PATTERNS = [
+  /^(?:📊\s*)?My Status$/i,
+  /^(?:📜\s*)?My History$/i,
+  /^(?:👤\s*)?My Profile$/i,
+  /^(?:💰\s*)?Record Payment$/i,
+  /^(?:📑\s*)?Monthly Report$/i,
+  /^(?:👥\s*)?Members List$/i,
+  /^(?:⏳\s*)?Unpaid List$/i,
+  /^(?:📨\s*)?Send Reminders$/i,
+  /^(?:➕\s*)?Add Member$/i,
+  /^(?:🛑\s*)?Deactivate Member$/i,
+  /^(?:⚙️\s*)?Set Standard Amount$/i,
+  /^(?:🛡️\s*)?Manage Roles$/i,
+  /^(?:🔄\s*)?Reverse Payment$/i,
+  /^(?:📁\s*)?Export CSV$/i,
+  /^(?:🔍\s*)?Audit Log$/i,
+  /^(?:🏠\s*)?(?:Main Menu|Home)$/i,
+];
 
 function registerWizardHandler(bot) {
   bot.on('text', async (ctx, next) => {
@@ -28,6 +47,20 @@ function registerWizardHandler(bot) {
     }
 
     const text = ctx.message.text.trim();
+
+    // Check if user clicked Cancel while in a wizard
+    if (/^(?:❌\s*)?Cancel(?: Operation)?$/i.test(text) || text.toLowerCase() === 'cancel') {
+      clearSession(userId);
+      return ctx.reply('❌ Current operation has been cancelled.', {
+        ...getMainMenuKeyboard(ctx.state?.role),
+      });
+    }
+
+    // Check if user pressed a menu button while in a wizard
+    if (MENU_BUTTON_PATTERNS.some((pattern) => pattern.test(text))) {
+      clearSession(userId);
+      return next();
+    }
 
     // ----------------------------------------------------
     // ADDMEMBER WIZARD (Name -> Phone -> Telegram ID)
@@ -98,7 +131,7 @@ function registerWizardHandler(bot) {
           `• *Telegram ID:* \`${member.telegram_id}\`\n` +
           `• *Joined Date:* ${member.joined_date}\n\n` +
           `_Current month contribution obligation initialized._`,
-          { parse_mode: 'Markdown' }
+          { parse_mode: 'Markdown', ...getMainMenuKeyboard(ctx.state?.role) }
         );
       } catch (err) {
         return ctx.reply(`❌ Registration failed: ${err.message}`);
@@ -118,6 +151,7 @@ function registerWizardHandler(bot) {
       const currency = getCurrency();
       return ctx.reply(`✅ Standard monthly contribution updated to *${formatMoney(cents, currency)}* for future obligations.`, {
         parse_mode: 'Markdown',
+        ...getMainMenuKeyboard(ctx.state?.role),
       });
     }
 
@@ -135,6 +169,7 @@ function registerWizardHandler(bot) {
         });
         return ctx.reply(`✅ Member *${member.full_name}* (#${member.id}) has been deactivated. Historical records have been preserved.`, {
           parse_mode: 'Markdown',
+          ...getMainMenuKeyboard(ctx.state?.role),
         });
       } catch (err) {
         return ctx.reply(`❌ Deactivation failed: ${err.message}`);
@@ -184,7 +219,7 @@ function registerWizardHandler(bot) {
           `• *Reason:* ${result.payment.reversal_reason}\n` +
           `• *Period:* ${result.obligation.year_month}\n` +
           `• *New Obligation Status:* ${result.obligation.status}`,
-          { parse_mode: 'Markdown' }
+          { parse_mode: 'Markdown', ...getMainMenuKeyboard(ctx.state?.role) }
         );
       } catch (err) {
         return ctx.reply(`❌ Reversal failed: ${err.message}`);
@@ -349,7 +384,7 @@ function registerWizardHandler(bot) {
         `• *System ID:* \`${member.telegram_id}\`\n` +
         `• *Joined Date:* ${member.joined_date}\n\n` +
         `_Current month contribution obligation initialized._`,
-        { parse_mode: 'Markdown' }
+        { parse_mode: 'Markdown', ...getMainMenuKeyboard(ctx.state?.role) }
       );
     } catch (err) {
       return ctx.reply(`❌ Registration failed: ${err.message}`);

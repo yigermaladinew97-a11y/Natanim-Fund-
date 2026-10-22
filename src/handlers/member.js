@@ -89,12 +89,14 @@ async function handleHistory(ctx) {
 
 function registerMemberHandlers(bot) {
   bot.command('mystatus', requireActiveMember, handleMyStatus);
+  bot.hears(/^(?:📊\s*)?My Status$/i, requireActiveMember, handleMyStatus);
   bot.action('menu_mystatus', requireActiveMember, async (ctx) => {
     await ctx.answerCbQuery();
     await handleMyStatus(ctx);
   });
 
   bot.command('history', requireActiveMember, handleHistory);
+  bot.hears(/^(?:📜\s*)?My History$/i, requireActiveMember, handleHistory);
   bot.action('menu_history', requireActiveMember, async (ctx) => {
     await ctx.answerCbQuery();
     await handleHistory(ctx);
@@ -103,5 +105,7 @@ function registerMemberHandlers(bot) {
 
 module.exports = {
   registerMemberHandlers,
+  handleMyStatus,
+  handleHistory,
 };
 

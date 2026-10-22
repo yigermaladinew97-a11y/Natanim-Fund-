@@ -1,3 +1,4 @@
+process.env.DEFAULT_MONTHLY_AMOUNT_CENTS = '50000';
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');

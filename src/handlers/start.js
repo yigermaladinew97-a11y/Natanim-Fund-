@@ -78,10 +78,52 @@ function registerStartHandlers(bot) {
     });
   });
 
+  async function handleMyProfile(ctx) {
+    const member = ctx.state?.member;
+    const userId = ctx.from.id;
+
+    if (!member) {
+      return ctx.reply(
+        `👤 *Profile Not Registered*\n\n` +
+        `Your Telegram User ID: \`${userId}\`\n\n` +
+        `You are not yet registered as a member. Please contact the church administrator to add you.`,
+        { parse_mode: 'Markdown', ...getMainMenuKeyboard(ctx.state?.role) }
+      );
+    }
+
+    const text =
+      `👤 *My Registered Church Profile*\n\n` +
+      `• *Full Name:* ${member.full_name}\n` +
+      `• *Phone:* ${member.phone || 'Not provided'}\n` +
+      `• *Telegram ID:* \`${member.telegram_id}\`\n` +
+      `• *Member Status:* ${member.status === 'active' ? '🟢 Active' : '🔴 Inactive'}\n` +
+      `• *Joined Date:* ${member.joined_date}\n` +
+      `• *System Member ID:* #${member.id}`;
+
+    await ctx.reply(text, { parse_mode: 'Markdown', ...getMainMenuKeyboard(ctx.state?.role) });
+  }
+
   bot.command('cancel', async (ctx) => {
     const userId = ctx.from.id;
     clearSession(userId);
     await ctx.reply('❌ Current operation has been cancelled.', {
+      ...getMainMenuKeyboard(ctx.state?.role),
+    });
+  });
+
+  bot.hears(/^(?:❌\s*)?Cancel(?: Operation)?$/i, async (ctx) => {
+    const userId = ctx.from.id;
+    clearSession(userId);
+    await ctx.reply('❌ Current operation has been cancelled.', {
+      ...getMainMenuKeyboard(ctx.state?.role),
+    });
+  });
+
+  bot.hears(/^(?:🏠\s*)?(?:Main Menu|Home)$/i, async (ctx) => {
+    const userId = ctx.from.id;
+    clearSession(userId);
+    await ctx.reply('🏠 *Main Menu*', {
+      parse_mode: 'Markdown',
       ...getMainMenuKeyboard(ctx.state?.role),
     });
   });
@@ -97,55 +139,11 @@ function registerStartHandlers(bot) {
     }
   });
 
-  bot.command('myprofile', async (ctx) => {
-    const member = ctx.state?.member;
-    const userId = ctx.from.id;
-
-    if (!member) {
-      return ctx.reply(
-        `👤 *Profile Not Registered*\n\n` +
-        `Your Telegram User ID: \`${userId}\`\n\n` +
-        `You are not yet registered as a member. Please contact the church administrator to add you.`,
-        { parse_mode: 'Markdown' }
-      );
-    }
-
-    const text =
-      `👤 *My Registered Church Profile*\n\n` +
-      `• *Full Name:* ${member.full_name}\n` +
-      `• *Phone:* ${member.phone || 'Not provided'}\n` +
-      `• *Telegram ID:* \`${member.telegram_id}\`\n` +
-      `• *Member Status:* ${member.status === 'active' ? '🟢 Active' : '🔴 Inactive'}\n` +
-      `• *Joined Date:* ${member.joined_date}\n` +
-      `• *System Member ID:* #${member.id}`;
-
-    await ctx.reply(text, { parse_mode: 'Markdown' });
-  });
-
+  bot.command('myprofile', handleMyProfile);
+  bot.hears(/^(?:👤\s*)?My Profile$/i, handleMyProfile);
   bot.action('menu_myprofile', async (ctx) => {
     await ctx.answerCbQuery();
-    const member = ctx.state?.member;
-    const userId = ctx.from.id;
-
-    if (!member) {
-      return ctx.reply(
-        `👤 *Profile Not Registered*\n\n` +
-        `Your Telegram User ID: \`${userId}\`\n\n` +
-        `You are not yet registered as a member. Please contact the church administrator to add you.`,
-        { parse_mode: 'Markdown' }
-      );
-    }
-
-    const text =
-      `👤 *My Registered Church Profile*\n\n` +
-      `• *Full Name:* ${member.full_name}\n` +
-      `• *Phone:* ${member.phone || 'Not provided'}\n` +
-      `• *Telegram ID:* \`${member.telegram_id}\`\n` +
-      `• *Member Status:* ${member.status === 'active' ? '🟢 Active' : '🔴 Inactive'}\n` +
-      `• *Joined Date:* ${member.joined_date}\n` +
-      `• *System Member ID:* #${member.id}`;
-
-    await ctx.reply(text, { parse_mode: 'Markdown' });
+    await handleMyProfile(ctx);
   });
 }
 

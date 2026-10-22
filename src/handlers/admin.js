@@ -65,6 +65,22 @@ function registerAdminHandlers(bot) {
     );
   });
 
+  bot.hears(/^(?:➕\s*)?Add Member$/i, requireAdmin, async (ctx) => {
+    setSession(ctx.from.id, { step: 'ADDMEMBER_WAIT_NAME' });
+    await ctx.reply(
+      '👤 *Register New Member — Step 1/3*\n\n' +
+      'Please enter the member\'s *Full Name* (e.g. `Brother Daniel Bekele`):\n\n' +
+      '_(You can also add sample members for testing with /seed)_',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🌱 Add 3 Demo Members For Testing', 'admin_seed_demo')],
+          [Markup.button.callback('❌ Cancel', 'action_cancel')],
+        ]),
+      }
+    );
+  });
+
   bot.action('menu_addmember', requireAdmin, async (ctx) => {
     await ctx.answerCbQuery();
     setSession(ctx.from.id, { step: 'ADDMEMBER_WAIT_NAME' });
@@ -147,6 +163,18 @@ function registerAdminHandlers(bot) {
     await ctx.reply('Select the member you wish to deactivate:', Markup.inlineKeyboard(buttons));
   });
 
+  bot.hears(/^(?:🛑\s*)?Deactivate Member$/i, requireAdmin, async (ctx) => {
+    const active = getAllActiveMembers();
+    if (active.length === 0) {
+      return ctx.reply('No active members found to deactivate.');
+    }
+    const buttons = active.slice(0, 10).map((m) => [
+      Markup.button.callback(`${m.full_name} (#${m.id})`, `deact_select_${m.id}`),
+    ]);
+    buttons.push([Markup.button.callback('❌ Cancel', 'action_cancel')]);
+    await ctx.reply('Select the member you wish to deactivate:', Markup.inlineKeyboard(buttons));
+  });
+
   bot.action('menu_deactivate', requireAdmin, async (ctx) => {
     await ctx.answerCbQuery();
     const active = getAllActiveMembers();
@@ -189,6 +217,20 @@ function registerAdminHandlers(bot) {
       });
     }
 
+    const currentCents = getStandardAmountCents();
+    setSession(ctx.from.id, { step: 'SETAMOUNT_WAIT_VALUE' });
+    await ctx.reply(
+      `⚙️ *Current Standard Contribution:* ${formatMoney(currentCents, currency)}\n\n` +
+      `Please enter the new standard monthly amount (e.g. \`600\` or \`750.50\`):`,
+      {
+        parse_mode: 'Markdown',
+        ...getCancelKeyboard(),
+      }
+    );
+  });
+
+  bot.hears(/^(?:⚙️\s*)?Set Standard Amount$/i, requireAdmin, async (ctx) => {
+    const currency = getCurrency();
     const currentCents = getStandardAmountCents();
     setSession(ctx.from.id, { step: 'SETAMOUNT_WAIT_VALUE' });
     await ctx.reply(
@@ -261,6 +303,20 @@ function registerAdminHandlers(bot) {
     await ctx.reply(msg, { parse_mode: 'Markdown' });
   });
 
+  bot.hears(/^(?:🛡️\s*)?Manage Roles$/i, requireAdmin, async (ctx) => {
+    const rolesList = listRoles();
+    let msg = `🛡️ *Authorized System Roles*\n\n`;
+    for (const r of rolesList) {
+      const name = r.full_name ? ` (${r.full_name})` : '';
+      msg += `• *${r.role.toUpperCase()}*: \`${r.telegram_id}\`${name}\n  _Assigned by: ${r.assigned_by} on ${r.created_at.slice(0, 10)}_\n\n`;
+    }
+
+    msg += `*To add a treasurer:*\n\`/roles add <telegram_id>\`\n\n`;
+    msg += `*To remove a treasurer:*\n\`/roles remove <telegram_id>\``;
+
+    await ctx.reply(msg, { parse_mode: 'Markdown' });
+  });
+
   bot.action('menu_roles', requireAdmin, async (ctx) => {
     await ctx.answerCbQuery();
     const rolesList = listRoles();
@@ -319,6 +375,18 @@ function registerAdminHandlers(bot) {
     );
   });
 
+  bot.hears(/^(?:🔄\s*)?Reverse Payment$/i, requireAdmin, async (ctx) => {
+    setSession(ctx.from.id, { step: 'REVERSE_WAIT_TXID' });
+    await ctx.reply(
+      `🔄 *Payment Reversal*\n\n` +
+      `Please reply with the *Transaction ID* of the payment you want to reverse (e.g. \`TX-20261021-A1B2C3\`):`,
+      {
+        parse_mode: 'Markdown',
+        ...getCancelKeyboard(),
+      }
+    );
+  });
+
   bot.action('menu_reverse_payment', requireAdmin, async (ctx) => {
     await ctx.answerCbQuery();
     setSession(ctx.from.id, { step: 'REVERSE_WAIT_TXID' });
@@ -336,6 +404,34 @@ function registerAdminHandlers(bot) {
   // /audit - System Audit History
   // ==========================================
   bot.command('audit', requireAdmin, async (ctx) => {
+    const db = getDatabase();
+    const logs = db.prepare(`
+      SELECT * FROM audit_log
+      ORDER BY id DESC
+      LIMIT 10
+    `).all();
+
+    if (logs.length === 0) {
+      return ctx.reply('No audit log entries recorded yet.');
+    }
+
+    let msg = `🔍 *System Audit Trail (Last 10 Actions)*\n\n`;
+    for (const l of logs) {
+      let details = '';
+      try {
+        const parsed = JSON.parse(l.details_json);
+        details = Object.entries(parsed).map(([k, v]) => `${k}: ${v}`).join(', ');
+      } catch (_) {
+        details = l.details_json || '';
+      }
+
+      msg += `• *#${l.id} [${l.action}]* — ${l.created_at}\n  _Actor:_ \`${l.actor_telegram_id}\` | _Entity:_ ${l.entity_type} (#${l.entity_id || 'N/A'})\n  _${details}_\n\n`;
+    }
+
+    await ctx.reply(msg, { parse_mode: 'Markdown' });
+  });
+
+  bot.hears(/^(?:🔍\s*)?Audit Log$/i, requireAdmin, async (ctx) => {
     const db = getDatabase();
     const logs = db.prepare(`
       SELECT * FROM audit_log

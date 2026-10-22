@@ -41,14 +41,11 @@ function formatReportMessage(summary) {
 }
 
 function registerReportHandlers(bot) {
-  // ==========================================
-  // /report - Monthly Summary
-  // ==========================================
-  bot.command('report', requireStaff, async (ctx) => {
-    const parts = ctx.message.text.trim().split(/\s+/).slice(1);
+  async function handleReport(ctx) {
+    const textParts = ctx.message?.text?.trim().split(/\s+/).slice(1) || [];
     let month = getCurrentYearMonth();
-    if (parts.length >= 1 && isValidYearMonth(parts[0])) {
-      month = parts[0];
+    if (textParts.length >= 1 && isValidYearMonth(textParts[0])) {
+      month = textParts[0];
     }
 
     const summary = getMonthlyReportSummary(month);
@@ -62,22 +59,14 @@ function registerReportHandlers(bot) {
     ]);
 
     await ctx.reply(text, { parse_mode: 'Markdown', ...keyboard });
-  });
+  }
+
+  bot.command('report', requireStaff, handleReport);
+  bot.hears(/^(?:📑\s*)?Monthly Report$/i, requireStaff, handleReport);
 
   bot.action('menu_report', requireStaff, async (ctx) => {
     await ctx.answerCbQuery();
-    const month = getCurrentYearMonth();
-    const summary = getMonthlyReportSummary(month);
-    const text = formatReportMessage(summary);
-
-    const keyboard = Markup.inlineKeyboard([
-      [
-        Markup.button.callback('👥 Member Breakdown', `report_breakdown_${month}_1`),
-        Markup.button.callback('📁 Export CSV', `report_export_${month}`),
-      ],
-    ]);
-
-    await ctx.reply(text, { parse_mode: 'Markdown', ...keyboard });
+    await handleReport(ctx);
   });
 
   // Member breakdown pagination
@@ -149,6 +138,50 @@ function registerReportHandlers(bot) {
     }
 
     await ctx.reply(text, { parse_mode: 'Markdown' });
+  }
+
+  bot.command('unpaid', requireStaff, async (ctx) => {
+    const parts = ctx.message.text.trim().split(/\s+/).slice(1);
+    let month = getCurrentYearMonth();
+    if (parts.length >= 1 && isValidYearMonth(parts[0])) {
+      month = parts[0];
+    }
+    const list = listUnpaidMembersForMonth(month);
+    const currency = getCurrency();
+
+    let text = `⏳ *Outstanding Balances — ${month}*\n\n`;
+    if (list.length === 0) {
+      text += `🎉 *All members have fully paid their contributions for ${month}!*`;
+    } else {
+      text += `Found *${list.length}* member(s) with outstanding balance:\n\n`;
+      for (const m of list) {
+        text += `• *${m.full_name}* (#${m.member_id})\n`;
+        text += `  Balance Due: *${formatMoney(m.balance_cents, currency)}* (Status: ${formatStatus(m.status)})\n`;
+        text += `  Phone: ${m.phone || 'N/A'} | Telegram: \`${m.telegram_id}\`\n\n`;
+      }
+      text += `_Use /remind to send them a private reminder._`;
+    }
+    await ctx.reply(text, { parse_mode: 'Markdown' });
+  });
+
+  bot.hears(/^(?:⏳\s*)?Unpaid List$/i, requireStaff, async (ctx) => {
+    const month = getCurrentYearMonth();
+    const list = listUnpaidMembersForMonth(month);
+    const currency = getCurrency();
+
+    let text = `⏳ *Outstanding Balances — ${month}*\n\n`;
+    if (list.length === 0) {
+      text += `🎉 *All members have fully paid their contributions for ${month}!*`;
+    } else {
+      text += `Found *${list.length}* member(s) with outstanding balance:\n\n`;
+      for (const m of list) {
+        text += `• *${m.full_name}* (#${m.member_id})\n`;
+        text += `  Balance Due: *${formatMoney(m.balance_cents, currency)}* (Status: ${formatStatus(m.status)})\n`;
+        text += `  Phone: ${m.phone || 'N/A'} | Telegram: \`${m.telegram_id}\`\n\n`;
+      }
+      text += `_Use /remind to send them a private reminder._`;
+    }
+    await ctx.reply(text, { parse_mode: 'Markdown' });
   });
 
   bot.action('menu_unpaid', requireStaff, async (ctx) => {
@@ -176,7 +209,7 @@ function registerReportHandlers(bot) {
   // ==========================================
   // /members - Active Members Directory
   // ==========================================
-  bot.command('members', requireStaff, async (ctx) => {
+  async function handleMembers(ctx) {
     const res = listActiveMembers(1, 8);
     let text = `👥 *Active Church Fund Members (Page 1/${res.totalPages})*\n`;
     text += `Total Active Members: *${res.total}*\n\n`;
@@ -189,7 +222,10 @@ function registerReportHandlers(bot) {
       parse_mode: 'Markdown',
       ...getPaginationKeyboard('members_page', 1, res.totalPages),
     });
-  });
+  }
+
+  bot.command('members', requireStaff, handleMembers);
+  bot.hears(/^(?:👥\s*)?Members List$/i, requireStaff, handleMembers);
 
   bot.action(/^members_page_(\d+)$/, requireStaff, async (ctx) => {
     await ctx.answerCbQuery();
@@ -219,8 +255,8 @@ function registerReportHandlers(bot) {
   // ==========================================
   // /export - CSV Export
   // ==========================================
-  bot.command('export', requireAdmin, async (ctx) => {
-    const parts = ctx.message.text.trim().split(/\s+/).slice(1);
+  async function handleExportCsv(ctx) {
+    const parts = ctx.message?.text?.trim().split(/\s+/).slice(1) || [];
     let month = getCurrentYearMonth();
     if (parts.length >= 1 && isValidYearMonth(parts[0])) {
       month = parts[0];
@@ -237,22 +273,14 @@ function registerReportHandlers(bot) {
     } catch (err) {
       await ctx.reply(`❌ Export failed: ${err.message}`);
     }
-  });
+  }
+
+  bot.command('export', requireAdmin, handleExportCsv);
+  bot.hears(/^(?:📁\s*)?Export CSV$/i, requireAdmin, handleExportCsv);
 
   bot.action('menu_export_csv', requireAdmin, async (ctx) => {
     await ctx.answerCbQuery();
-    const month = getCurrentYearMonth();
-    try {
-      const csvBuffer = exportMonthlyReportCsv(month);
-      const filename = `Natanim_Fund_Report_${month}.csv`;
-
-      await ctx.replyWithDocument(
-        { source: csvBuffer, filename },
-        { caption: `📁 *Monthly Financial Report for ${month}* (RFC-4180 CSV Export)`, parse_mode: 'Markdown' }
-      );
-    } catch (err) {
-      await ctx.reply(`❌ Export failed: ${err.message}`);
-    }
+    await handleExportCsv(ctx);
   });
 
   bot.action(/^report_export_(\d{4}-\d{2})$/, requireAdmin, async (ctx) => {

@@ -6,7 +6,7 @@ const { getCurrentYearMonth } = require('../utils/formatters');
 const { getConfirmationKeyboard } = require('../utils/keyboards');
 
 function registerReminderHandlers(bot) {
-  bot.command('remind', requireStaff, async (ctx) => {
+  async function handleRemindPrompt(ctx) {
     const currentMonth = getCurrentYearMonth();
     const unpaid = listUnpaidMembersForMonth(currentMonth);
 
@@ -25,28 +25,14 @@ function registerReminderHandlers(bot) {
       parse_mode: 'Markdown',
       ...getConfirmationKeyboard('remind_execute_confirm'),
     });
-  });
+  }
+
+  bot.command('remind', requireStaff, handleRemindPrompt);
+  bot.hears(/^(?:📨\s*)?Send Reminders$/i, requireStaff, handleRemindPrompt);
 
   bot.action('menu_remind', requireStaff, async (ctx) => {
     await ctx.answerCbQuery();
-    const currentMonth = getCurrentYearMonth();
-    const unpaid = listUnpaidMembersForMonth(currentMonth);
-
-    if (unpaid.length === 0) {
-      return ctx.reply(`🎉 All members have fully paid for ${currentMonth}. No reminders needed!`);
-    }
-
-    const text =
-      `📨 *Send Payment Reminders — ${currentMonth}*\n\n` +
-      `There are currently *${unpaid.length}* active member(s) with an outstanding balance for this month.\n\n` +
-      `Each member will receive a private reminder via direct message from this bot.\n` +
-      `_A 72-hour cooldown is applied automatically to prevent duplicate or spam reminders._\n\n` +
-      `Do you want to proceed?`;
-
-    await ctx.reply(text, {
-      parse_mode: 'Markdown',
-      ...getConfirmationKeyboard('remind_execute_confirm'),
-    });
+    await handleRemindPrompt(ctx);
   });
 
   bot.action('remind_execute_confirm', requireStaff, async (ctx) => {
