@@ -54,15 +54,19 @@ async function main() {
     try {
       await bot.telegram.setMyCommands([
         { command: 'start', description: 'Open Main Menu & Welcome' },
+        { command: 'register', description: 'Register as a Church Fund Member' },
         { command: 'mystatus', description: 'Check monthly contribution status' },
+        { command: 'submitpayment', description: 'Upload payment receipt / screenshot' },
         { command: 'history', description: 'View payment & obligation history' },
         { command: 'myprofile', description: 'View church member profile' },
-        { command: 'paid', description: 'Record verified payment (Staff)' },
+        { command: 'submissions', description: 'Review submitted payment receipts (Staff)' },
+        { command: 'paid', description: 'Record verified payment manually (Staff)' },
         { command: 'report', description: 'View monthly financial report (Staff)' },
         { command: 'unpaid', description: 'List members with unpaid balances (Staff)' },
         { command: 'members', description: 'Browse active members directory (Staff)' },
         { command: 'remind', description: 'Send reminders to unpaid members (Staff)' },
-        { command: 'addmember', description: 'Register new member (Admin)' },
+        { command: 'approvals', description: 'Review pending registrations (Admin)' },
+        { command: 'addmember', description: 'Register new member (Admin backup)' },
         { command: 'help', description: 'Show all bot commands and guide' },
         { command: 'cancel', description: 'Cancel current operation' },
       ]);

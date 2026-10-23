@@ -11,7 +11,7 @@ const {
 } = require('../src/utils/keyboards');
 
 test('Keyboards & Menu Button Utilities Tests', async (t) => {
-  await t.test('1. Member role generates persistent Reply Keyboard with 3 buttons', () => {
+  await t.test('1. Member role generates persistent Reply Keyboard with 4 buttons', () => {
     const kb = getMainMenuKeyboard('member');
     assert.ok(kb.reply_markup);
     assert.ok(kb.reply_markup.keyboard);
@@ -21,7 +21,7 @@ test('Keyboards & Menu Button Utilities Tests', async (t) => {
     const rows = kb.reply_markup.keyboard;
     assert.strictEqual(rows.length, 2);
     assert.deepStrictEqual(rows[0], ['📊 My Status', '📜 My History']);
-    assert.deepStrictEqual(rows[1], ['👤 My Profile']);
+    assert.deepStrictEqual(rows[1], ['👤 My Profile', '📤 Submit Receipt']);
   });
 
   await t.test('2. Treasurer role includes staff management menu buttons', () => {
@@ -75,5 +75,15 @@ test('Keyboards & Menu Button Utilities Tests', async (t) => {
     assert.strictEqual(buttons[0].text, '⬅️ Prev');
     assert.strictEqual(buttons[1].text, '📄 2/5');
     assert.strictEqual(buttons[2].text, 'Next ➡️');
+  });
+
+  await t.test('6. Unregistered role shows Register button; Pending role removes keyboard', () => {
+    const unregKb = getMainMenuKeyboard('unregistered');
+    assert.ok(unregKb.reply_markup.keyboard);
+    assert.deepStrictEqual(unregKb.reply_markup.keyboard, [['📝 Register as Member']]);
+
+    const pendingKb = getMainMenuKeyboard('pending');
+    assert.ok(pendingKb.reply_markup);
+    assert.strictEqual(pendingKb.reply_markup.remove_keyboard, true);
   });
 });

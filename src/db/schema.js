@@ -98,9 +98,50 @@ CREATE TABLE IF NOT EXISTS reminder_log (
   sent_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Member self-registration requests awaiting administrator approval
+CREATE TABLE IF NOT EXISTS registration_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  telegram_id TEXT NOT NULL,
+  username TEXT,
+  full_name TEXT NOT NULL,
+  phone TEXT,
+  status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'APPROVED', 'REJECTED')),
+  reviewed_by TEXT,
+  reviewed_at TEXT,
+  rejection_reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Member payment receipt / screenshot submissions awaiting staff verification
+CREATE TABLE IF NOT EXISTS payment_submissions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE RESTRICT,
+  telegram_id TEXT NOT NULL,
+  year_month TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+  payment_method TEXT NOT NULL CHECK(payment_method IN ('cash', 'bank_transfer', 'mobile_money')),
+  reference_number TEXT,
+  file_id TEXT NOT NULL,
+  file_unique_id TEXT,
+  caption TEXT,
+  status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'APPROVED', 'REJECTED')),
+  reviewed_by TEXT,
+  reviewed_at TEXT,
+  rejection_reason TEXT,
+  payment_id INTEGER REFERENCES payments(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Performance and Integrity Indexes
 CREATE INDEX IF NOT EXISTS idx_members_telegram_id ON members(telegram_id);
 CREATE INDEX IF NOT EXISTS idx_members_status ON members(status);
+CREATE INDEX IF NOT EXISTS idx_registration_requests_tg ON registration_requests(telegram_id);
+CREATE INDEX IF NOT EXISTS idx_registration_requests_status ON registration_requests(status);
+CREATE INDEX IF NOT EXISTS idx_payment_submissions_member ON payment_submissions(member_id);
+CREATE INDEX IF NOT EXISTS idx_payment_submissions_status ON payment_submissions(status);
+CREATE INDEX IF NOT EXISTS idx_payment_submissions_month ON payment_submissions(year_month);
 CREATE INDEX IF NOT EXISTS idx_obligations_lookup ON obligations(member_id, year_month);
 CREATE INDEX IF NOT EXISTS idx_obligations_status ON obligations(status);
 CREATE INDEX IF NOT EXISTS idx_obligations_month ON obligations(year_month);

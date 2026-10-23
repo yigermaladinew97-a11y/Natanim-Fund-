@@ -83,6 +83,26 @@ function listRoles() {
   `).all();
 }
 
+function getAdminTelegramIds() {
+  const db = getDatabase();
+  const rows = db.prepare("SELECT telegram_id FROM roles WHERE role = 'admin'").all();
+  const ids = new Set(rows.map((r) => String(r.telegram_id).trim()));
+  if (config.adminTelegramId) {
+    ids.add(String(config.adminTelegramId).trim());
+  }
+  return Array.from(ids);
+}
+
+function getStaffTelegramIds() {
+  const db = getDatabase();
+  const rows = db.prepare("SELECT telegram_id FROM roles WHERE role IN ('admin', 'treasurer')").all();
+  const ids = new Set(rows.map((r) => String(r.telegram_id).trim()));
+  if (config.adminTelegramId) {
+    ids.add(String(config.adminTelegramId).trim());
+  }
+  return Array.from(ids);
+}
+
 module.exports = {
   getUserRole,
   isAdmin,
@@ -92,5 +112,7 @@ module.exports = {
   assignRole,
   revokeRole,
   listRoles,
+  getAdminTelegramIds,
+  getStaffTelegramIds,
 };
 

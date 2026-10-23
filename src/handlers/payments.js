@@ -1,10 +1,17 @@
 const { Markup } = require('telegraf');
 const { requireStaff } = require('../middleware/auth');
 const { getAllActiveMembers, getMemberById } = require('../services/memberService');
-const { recordPayment, getCurrency, getOrCreateObligation } = require('../services/accounting');
+const {
+  recordPayment,
+  getCurrency,
+  getOrCreateObligation,
+  getPendingPaymentSubmissions,
+  approvePaymentSubmission,
+  rejectPaymentSubmission,
+} = require('../services/accounting');
 const { setSession, getSession, clearSession } = require('../utils/session');
-const { parseMoneyToCents, formatMoney, getCurrentYearMonth, formatPaymentMethod } = require('../utils/formatters');
-const { getPaymentMethodKeyboard, getCancelKeyboard, getConfirmationKeyboard } = require('../utils/keyboards');
+const { parseMoneyToCents, formatMoney, getCurrentYearMonth, formatPaymentMethod, formatStatus } = require('../utils/formatters');
+const { getPaymentMethodKeyboard, getCancelKeyboard, getConfirmationKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
 
 function startPaymentWizard(ctx) {
   const members = getAllActiveMembers();
@@ -42,6 +49,154 @@ function startPaymentWizard(ctx) {
 }
 
 function registerPaymentHandlers(bot) {
+  // ==========================================
+  // Verify & Approve Member Screenshot Submissions
+  // ==========================================
+  async function handleSubmissionsList(ctx) {
+    const list = getPendingPaymentSubmissions();
+    if (list.length === 0) {
+      return ctx.reply('✅ *No Pending Receipts*\n\nAll submitted member payments have been reviewed and verified.', {
+        parse_mode: 'Markdown',
+      });
+    }
+
+    const currency = getCurrency();
+    await ctx.reply(`💳 *Pending Payment Receipts (${list.length})*\n\nReview each submitted receipt below:`, {
+      parse_mode: 'Markdown',
+    });
+
+    for (const sub of list) {
+      const caption =
+        `👤 *${sub.full_name}* (#${sub.member_id})\n` +
+        `• *Period:* ${sub.year_month}\n` +
+        `• *Amount:* *${formatMoney(sub.amount_cents, currency)}*\n` +
+        `• *Method:* ${formatPaymentMethod(sub.payment_method)}\n` +
+        `• *Ref / Tx:* ${sub.reference_number || 'None'}\n` +
+        `• *Submitted:* ${sub.created_at}`;
+
+      const keyboard = Markup.inlineKeyboard([
+        [
+          Markup.button.callback('✅ Verify & Approve', `sub_approve_${sub.id}`),
+          Markup.button.callback('❌ Reject', `sub_reject_${sub.id}`),
+        ],
+      ]);
+
+      try {
+        await ctx.replyWithPhoto(sub.file_id, {
+          caption,
+          parse_mode: 'Markdown',
+          ...keyboard,
+        });
+      } catch (_) {
+        await ctx.reply(caption, {
+          parse_mode: 'Markdown',
+          ...keyboard,
+        });
+      }
+    }
+  }
+
+  bot.command('submissions', requireStaff, handleSubmissionsList);
+  bot.command('verify', requireStaff, handleSubmissionsList);
+  bot.hears(/^(?:💳\s*)?Verify Receipts$/i, requireStaff, handleSubmissionsList);
+  bot.action('menu_submissions', requireStaff, async (ctx) => {
+    await ctx.answerCbQuery();
+    await handleSubmissionsList(ctx);
+  });
+
+  bot.action(/^sub_approve_(\d+)$/, requireStaff, async (ctx) => {
+    await ctx.answerCbQuery();
+    const submissionId = parseInt(ctx.match[1], 10);
+    const staffId = ctx.from.id;
+    const staffName = ctx.from.first_name || 'Staff';
+
+    try {
+      const { payment, submission } = approvePaymentSubmission(submissionId, staffId);
+      const currency = getCurrency();
+      const obl = getOrCreateObligation(submission.member_id, submission.year_month);
+      const balanceCents = Math.max(0, obl.amount_due_cents - obl.amount_paid_cents);
+
+      const caption =
+        `✅ *Payment Verified & Approved!*\n\n` +
+        `• *Member:* ${submission.full_name} (#${submission.member_id})\n` +
+        `• *Period:* ${payment.year_month}\n` +
+        `• *Amount:* *${formatMoney(payment.amount_cents, currency)}*\n` +
+        `• *Method:* ${formatPaymentMethod(payment.payment_method)}\n` +
+        `• *Tx ID:* \`${payment.tx_id}\`\n` +
+        `• *Verified By:* ${staffName} (\`${staffId}\`)\n` +
+        `• *Obligation Status:* ${formatStatus(obl.status)}`;
+
+      try {
+        await ctx.editMessageCaption(caption, { parse_mode: 'Markdown' });
+      } catch (_) {
+        await ctx.reply(caption, { parse_mode: 'Markdown' });
+      }
+
+      // Send official digital receipt to member
+      try {
+        await ctx.telegram.sendMessage(
+          submission.telegram_id,
+          `🎉 *Payment Verified & Recorded!*\n\n` +
+          `Hello *${submission.full_name}*, your contribution has been verified by church administration.\n\n` +
+          `🧾 *Official Payment Receipt:*\n` +
+          `• *Transaction ID:* \`${payment.tx_id}\`\n` +
+          `• *Period:* ${payment.year_month}\n` +
+          `• *Amount Paid:* *${formatMoney(payment.amount_cents, currency)}*\n` +
+          `• *Payment Method:* ${formatPaymentMethod(payment.payment_method)}\n` +
+          `• *Status:* ${formatStatus(obl.status)}\n` +
+          `• *Remaining Balance for ${payment.year_month}:* ${formatMoney(balanceCents, currency)}\n\n` +
+          `May God bless your generosity and support for the church! 🕊️`,
+          {
+            parse_mode: 'Markdown',
+            ...getMainMenuKeyboard('member'),
+          }
+        );
+      } catch (notifyErr) {
+        console.warn(`[Payment] Could not send receipt DM to member ${submission.telegram_id}:`, notifyErr.message);
+      }
+    } catch (err) {
+      return ctx.reply(`⚠️ ${err.message}`);
+    }
+  });
+
+  bot.action(/^sub_reject_(\d+)$/, requireStaff, async (ctx) => {
+    await ctx.answerCbQuery();
+    const submissionId = parseInt(ctx.match[1], 10);
+    const staffId = ctx.from.id;
+    const staffName = ctx.from.first_name || 'Staff';
+
+    try {
+      const submission = rejectPaymentSubmission(submissionId, staffId, 'Declined by staff');
+      const currency = getCurrency();
+
+      const caption =
+        `❌ *Payment Submission Rejected*\n\n` +
+        `• *Member:* ${submission.full_name} (#${submission.member_id})\n` +
+        `• *Amount:* ${formatMoney(submission.amount_cents, currency)}\n` +
+        `• *Period:* ${submission.year_month}\n` +
+        `• *Rejected By:* ${staffName} (\`${staffId}\`)\n`;
+
+      try {
+        await ctx.editMessageCaption(caption, { parse_mode: 'Markdown' });
+      } catch (_) {
+        await ctx.reply(caption, { parse_mode: 'Markdown' });
+      }
+
+      // Notify the member
+      try {
+        await ctx.telegram.sendMessage(
+          submission.telegram_id,
+          `⚠️ *Payment Verification Notice*\n\n` +
+          `Hello *${submission.full_name}*, your payment submission of *${formatMoney(submission.amount_cents, currency)}* for *${submission.year_month}* could not be verified.\n\n` +
+          `Please check that the transfer was sent to the church account and that the screenshot is clear. You can re-submit via /submitpayment or contact the treasurer.`,
+          { parse_mode: 'Markdown' }
+        );
+      } catch (_) {}
+    } catch (err) {
+      return ctx.reply(`⚠️ ${err.message}`);
+    }
+  });
+
   bot.command('paid', requireStaff, async (ctx) => {
     startPaymentWizard(ctx);
   });

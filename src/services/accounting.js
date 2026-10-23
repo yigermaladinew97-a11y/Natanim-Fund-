@@ -446,6 +446,213 @@ function getPaymentByTxId(txId) {
   `).get(txId);
 }
 
+function createPaymentSubmission({
+  memberId,
+  telegramId,
+  yearMonth,
+  amountCents,
+  paymentMethod,
+  referenceNumber,
+  fileId,
+  fileUniqueId,
+  caption,
+}) {
+  const db = getDatabase();
+  const member = db.prepare('SELECT * FROM members WHERE id = ?').get(memberId);
+  if (!member || member.status !== 'active') {
+    throw new Error('Active member not found.');
+  }
+
+  if (!isValidYearMonth(yearMonth)) {
+    throw new Error('Invalid year-month format (expected YYYY-MM).');
+  }
+
+  if (!Number.isInteger(amountCents) || amountCents <= 0) {
+    throw new Error('Payment amount must be a positive integer in cents.');
+  }
+
+  if (!isValidPaymentMethod(paymentMethod)) {
+    throw new Error('Invalid payment method.');
+  }
+
+  if (!fileId) {
+    throw new Error('Screenshot photo or receipt image is required.');
+  }
+
+  const cleanRef = sanitizeText(referenceNumber, 100);
+  const cleanCap = sanitizeText(caption, 255);
+
+  const res = db.prepare(`
+    INSERT INTO payment_submissions (
+      member_id, telegram_id, year_month, amount_cents, payment_method,
+      reference_number, file_id, file_unique_id, caption, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
+  `).run(
+    memberId,
+    String(telegramId),
+    yearMonth,
+    amountCents,
+    paymentMethod,
+    cleanRef,
+    fileId,
+    fileUniqueId || null,
+    cleanCap
+  );
+
+  const submissionId = res.lastInsertRowid;
+
+  db.prepare(`
+    INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
+    VALUES (?, ?, ?, ?, ?)
+  `).run('SUBMIT_PAYMENT_PROOF', 'payment_submissions', String(submissionId), String(telegramId), JSON.stringify({
+    memberId,
+    yearMonth,
+    amountCents,
+    paymentMethod,
+    referenceNumber: cleanRef,
+  }));
+
+  return getPaymentSubmissionById(submissionId);
+}
+
+function getPendingPaymentSubmissions() {
+  const db = getDatabase();
+  return db.prepare(`
+    SELECT s.*, m.full_name, m.phone, m.telegram_id as member_telegram_id
+    FROM payment_submissions s
+    JOIN members m ON s.member_id = m.id
+    WHERE s.status = 'PENDING'
+    ORDER BY s.created_at ASC
+  `).all();
+}
+
+function getPaymentSubmissionById(id) {
+  const db = getDatabase();
+  return db.prepare(`
+    SELECT s.*, m.full_name, m.phone, m.telegram_id as member_telegram_id
+    FROM payment_submissions s
+    JOIN members m ON s.member_id = m.id
+    WHERE s.id = ?
+  `).get(id);
+}
+
+function approvePaymentSubmission(submissionId, reviewerTelegramId) {
+  const db = getDatabase();
+  const sub = db.prepare('SELECT * FROM payment_submissions WHERE id = ?').get(submissionId);
+  if (!sub) {
+    throw new Error('Payment submission not found.');
+  }
+
+  if (sub.status !== 'PENDING') {
+    throw new Error(`This payment submission has already been ${sub.status.toLowerCase()}.`);
+  }
+
+  const tx = db.transaction(() => {
+    const { payment, obligation } = recordPayment({
+      memberId: sub.member_id,
+      yearMonth: sub.year_month,
+      amountCents: sub.amount_cents,
+      paymentMethod: sub.payment_method,
+      referenceNumber: sub.reference_number,
+      notes: `Approved from member receipt submission #${sub.id}`,
+      recordedBy: reviewerTelegramId,
+    });
+
+    db.prepare(`
+      UPDATE payment_submissions
+      SET status = 'APPROVED', reviewed_by = ?, reviewed_at = datetime('now'), payment_id = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(String(reviewerTelegramId), payment.id, submissionId);
+
+    db.prepare(`
+      INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
+      VALUES (?, ?, ?, ?, ?)
+    `).run('APPROVE_PAYMENT_SUBMISSION', 'payment_submissions', String(submissionId), String(reviewerTelegramId), JSON.stringify({
+      paymentId: payment.id,
+      txId: payment.tx_id,
+      memberId: sub.member_id,
+      amountCents: sub.amount_cents,
+    }));
+
+    return {
+      payment,
+      obligation,
+      submission: getPaymentSubmissionById(submissionId),
+    };
+  });
+
+  return tx();
+}
+
+function rejectPaymentSubmission(submissionId, reviewerTelegramId, reason = 'Declined by staff') {
+  const db = getDatabase();
+  const sub = db.prepare('SELECT * FROM payment_submissions WHERE id = ?').get(submissionId);
+  if (!sub) {
+    throw new Error('Payment submission not found.');
+  }
+
+  if (sub.status !== 'PENDING') {
+    throw new Error(`This payment submission has already been ${sub.status.toLowerCase()}.`);
+  }
+
+  const cleanReason = sanitizeText(reason, 255) || 'Declined by staff';
+
+  db.prepare(`
+    UPDATE payment_submissions
+    SET status = 'REJECTED', reviewed_by = ?, reviewed_at = datetime('now'), rejection_reason = ?, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(String(reviewerTelegramId), cleanReason, submissionId);
+
+  db.prepare(`
+    INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
+    VALUES (?, ?, ?, ?, ?)
+  `).run('REJECT_PAYMENT_SUBMISSION', 'payment_submissions', String(submissionId), String(reviewerTelegramId), JSON.stringify({
+    memberId: sub.member_id,
+    amountCents: sub.amount_cents,
+    reason: cleanReason,
+  }));
+
+  return getPaymentSubmissionById(submissionId);
+}
+
+async function notifyStaffNewPaymentSubmission(telegram, submission) {
+  const { getStaffTelegramIds } = require('./permissions');
+  const { Markup } = require('telegraf');
+  const { formatMoney, formatPaymentMethod, escapeHtml } = require('../utils/formatters');
+
+  const staffIds = getStaffTelegramIds();
+  const currency = getCurrency();
+
+  const caption =
+    `💳 <b>New Payment Receipt Submitted!</b>\n\n` +
+    `• <b>Member:</b> ${escapeHtml(submission.full_name)} (#${submission.member_id})\n` +
+    `• <b>Period:</b> ${escapeHtml(submission.year_month)}\n` +
+    `• <b>Amount:</b> <b>${escapeHtml(formatMoney(submission.amount_cents, currency))}</b>\n` +
+    `• <b>Method:</b> ${escapeHtml(formatPaymentMethod(submission.payment_method))}\n` +
+    `• <b>Ref / Tx:</b> ${escapeHtml(submission.reference_number || 'None')}\n` +
+    `• <b>Submitted:</b> ${escapeHtml(submission.created_at)}\n\n` +
+    `Please verify receipt in church account and choose an action:`;
+
+  const keyboard = Markup.inlineKeyboard([
+    [
+      Markup.button.callback('✅ Verify & Approve', `sub_approve_${submission.id}`),
+      Markup.button.callback('❌ Reject', `sub_reject_${submission.id}`),
+    ],
+  ]);
+
+  for (const staffId of staffIds) {
+    try {
+      await telegram.sendPhoto(staffId, submission.file_id, {
+        caption,
+        parse_mode: 'HTML',
+        ...keyboard,
+      });
+    } catch (err) {
+      console.warn(`[Payment] Could not send receipt photo to staff ${staffId}:`, err.message);
+    }
+  }
+}
+
 module.exports = {
   getSetting,
   setSetting,
@@ -464,5 +671,11 @@ module.exports = {
   getMemberOutstandingTotal,
   listUnpaidMembersForMonth,
   getPaymentByTxId,
+  createPaymentSubmission,
+  getPendingPaymentSubmissions,
+  getPaymentSubmissionById,
+  approvePaymentSubmission,
+  rejectPaymentSubmission,
+  notifyStaffNewPaymentSubmission,
 };
 

@@ -1,6 +1,13 @@
 const { Markup } = require('telegraf');
 const { requireAdmin } = require('../middleware/auth');
-const { registerMember, deactivateMember, getAllActiveMembers } = require('../services/memberService');
+const {
+  registerMember,
+  deactivateMember,
+  getAllActiveMembers,
+  getPendingRegistrationRequests,
+  approveRegistrationRequest,
+  rejectRegistrationRequest,
+} = require('../services/memberService');
 const {
   setStandardAmountCents,
   getStandardAmountCents,
@@ -8,16 +15,139 @@ const {
   reversePayment,
   getPaymentByTxId,
 } = require('../services/accounting');
-const { assignRole, revokeRole, listRoles } = require('../services/permissions');
+const { assignRole, revokeRole, listRoles, getMemberByTelegramId } = require('../services/permissions');
 const { getDatabase } = require('../db');
 const { setSession, getSession, clearSession } = require('../utils/session');
-const { parseMoneyToCents, formatMoney } = require('../utils/formatters');
+const { parseMoneyToCents, formatMoney, escapeHtml } = require('../utils/formatters');
 const { isValidTelegramId, sanitizeText } = require('../utils/validators');
-const { getCancelKeyboard } = require('../utils/keyboards');
+const { getCancelKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
 
 function registerAdminHandlers(bot) {
   // ==========================================
-  // /addmember - Register New Member
+  // /approvals - Review Pending Registrations
+  // ==========================================
+  async function handlePendingApprovals(ctx) {
+    const list = getPendingRegistrationRequests();
+    if (list.length === 0) {
+      return ctx.reply('✅ *No Pending Registrations*\n\nThere are currently no member requests awaiting approval.', {
+        parse_mode: 'Markdown',
+      });
+    }
+
+    await ctx.reply(`📥 *Pending Member Registrations (${list.length})*\n\nReview each request below:`, {
+      parse_mode: 'Markdown',
+    });
+
+    for (const req of list) {
+      const text =
+        `👤 *${req.full_name}*\n` +
+        `• *Phone:* ${req.phone || 'Not provided'}\n` +
+        `• *Telegram ID:* \`${req.telegram_id}\`\n` +
+        (req.username ? `• *Username:* @${req.username}\n` : '') +
+        `• *Requested:* ${req.created_at}`;
+
+      await ctx.reply(text, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [
+            Markup.button.callback('✅ Approve', `reg_approve_${req.id}`),
+            Markup.button.callback('❌ Reject', `reg_reject_${req.id}`),
+          ],
+        ]),
+      });
+    }
+  }
+
+  bot.command('approvals', requireAdmin, handlePendingApprovals);
+  bot.hears(/^(?:📥\s*)?Pending Approvals$/i, requireAdmin, handlePendingApprovals);
+  bot.action('menu_approvals', requireAdmin, async (ctx) => {
+    await ctx.answerCbQuery();
+    await handlePendingApprovals(ctx);
+  });
+
+  bot.action(/^reg_approve_(\d+)$/, requireAdmin, async (ctx) => {
+    await ctx.answerCbQuery();
+    const requestId = parseInt(ctx.match[1], 10);
+    const adminId = ctx.from.id;
+
+    try {
+      const { member, request } = approveRegistrationRequest(requestId, adminId);
+
+      const text =
+        `✅ *Member Approved & Registered!*\n\n` +
+        `• *Member:* ${member.full_name} (#${member.id})\n` +
+        `• *Telegram ID:* \`${member.telegram_id}\`\n` +
+        `• *Phone:* ${member.phone || 'Not provided'}\n` +
+        `• *Approved By:* Admin (${ctx.from.first_name || adminId})\n` +
+        `• *Joined Date:* ${member.joined_date}\n\n` +
+        `_Active member registered & current month obligation initialized._`;
+
+      try {
+        await ctx.editMessageText(text, { parse_mode: 'Markdown' });
+      } catch (_) {
+        await ctx.reply(text, { parse_mode: 'Markdown' });
+      }
+
+      // Notify the member
+      try {
+        await ctx.telegram.sendMessage(
+          request.telegram_id,
+          `🎉 *Congratulations, ${member.full_name}!*\n\n` +
+          `Your registration request for *Natanim Church Fund* has been *approved* by church administrators!\n\n` +
+          `You are now an active contributing member. Use the menu below to view your monthly contribution status and profile anytime.`,
+          {
+            parse_mode: 'Markdown',
+            ...getMainMenuKeyboard('member'),
+          }
+        );
+      } catch (notifyErr) {
+        console.warn(`[Registration] Could not send DM to member ${request.telegram_id}:`, notifyErr.message);
+      }
+    } catch (err) {
+      return ctx.reply(`⚠️ ${err.message}`);
+    }
+  });
+
+  bot.action(/^reg_reject_(\d+)$/, requireAdmin, async (ctx) => {
+    await ctx.answerCbQuery();
+    const requestId = parseInt(ctx.match[1], 10);
+    const adminId = ctx.from.id;
+
+    try {
+      const request = rejectRegistrationRequest(requestId, adminId);
+
+      const text =
+        `❌ *Registration Request Rejected*\n\n` +
+        `• *Applicant:* ${request.full_name}\n` +
+        `• *Telegram ID:* \`${request.telegram_id}\`\n` +
+        `• *Rejected By:* Admin (${ctx.from.first_name || adminId})\n`;
+
+      try {
+        await ctx.editMessageText(text, { parse_mode: 'Markdown' });
+      } catch (_) {
+        await ctx.reply(text, { parse_mode: 'Markdown' });
+      }
+
+      // Notify the applicant
+      try {
+        await ctx.telegram.sendMessage(
+          request.telegram_id,
+          `ℹ️ *Registration Update*\n\n` +
+          `Your membership request for *Natanim Church Fund* was not approved at this time.\n\n` +
+          `You may review your details and submit a new registration request when ready.`,
+          {
+            parse_mode: 'Markdown',
+            ...getMainMenuKeyboard('unregistered'),
+          }
+        );
+      } catch (_) {}
+    } catch (err) {
+      return ctx.reply(`⚠️ ${err.message}`);
+    }
+  });
+
+  // ==========================================
+  // /addmember - Register New Member (Backup)
   // ==========================================
   bot.command('addmember', requireAdmin, async (ctx) => {
     const text = ctx.message.text.trim();
@@ -261,6 +391,63 @@ function registerAdminHandlers(bot) {
   // ==========================================
   // /roles - Manage Treasurer roles
   // ==========================================
+  async function notifyUserRoleChanged(telegram, targetId, newRole) {
+    try {
+      if (newRole === 'treasurer') {
+        await telegram.sendMessage(
+          targetId,
+          `🎉 <b>Role Updated!</b>\n\n` +
+          `You have been granted <b>Treasurer</b> privileges for Natanim Church Fund by an administrator.\n\n` +
+          `Your menu buttons below have been automatically updated. You now have access to staff tools like <b>Record Payment</b>, <b>Monthly Report</b>, <b>Members List</b>, and <b>Verify Receipts</b>!`,
+          {
+            parse_mode: 'HTML',
+            ...getMainMenuKeyboard('treasurer'),
+          }
+        );
+      } else {
+        const member = getMemberByTelegramId(targetId);
+        const fallbackRole = member && member.status === 'active' ? 'member' : 'unregistered';
+        await telegram.sendMessage(
+          targetId,
+          `ℹ️ <b>Staff Role Update</b>\n\n` +
+          `Your Treasurer privileges for Natanim Church Fund have been removed by an administrator.\n\n` +
+          `Your menu buttons below have been updated back to regular member access.`,
+          {
+            parse_mode: 'HTML',
+            ...getMainMenuKeyboard(fallbackRole),
+          }
+        );
+      }
+    } catch (dmErr) {
+      console.warn(`[Roles] Could not send direct notification to user ${targetId}:`, dmErr.message);
+    }
+  }
+
+  function getRolesView() {
+    const rolesList = listRoles();
+    let msg = `🛡️ <b>Authorized System Roles</b>\n\n`;
+    for (const r of rolesList) {
+      const name = r.full_name ? ` (${escapeHtml(r.full_name)})` : '';
+      msg += `• <b>${escapeHtml(r.role.toUpperCase())}</b>: <code>${escapeHtml(r.telegram_id)}</code>${name}\n  <i>Assigned by: ${escapeHtml(r.assigned_by)} on ${escapeHtml(r.created_at.slice(0, 10))}</i>\n\n`;
+    }
+
+    msg += `<b>Quick Actions:</b>\n`;
+    msg += `• Tap <b>➕ Add Treasurer</b> to assign a member as Treasurer.\n`;
+    msg += `• Or send command: <code>/roles add &lt;telegram_id&gt;</code>\n`;
+    msg += `• Or revoke with: <code>/roles remove &lt;telegram_id&gt;</code>`;
+
+    const buttons = [];
+    buttons.push([Markup.button.callback('➕ Add Treasurer', 'admin_role_prompt_add')]);
+
+    const treasurers = rolesList.filter((r) => r.role === 'treasurer');
+    for (const t of treasurers) {
+      const label = t.full_name ? `❌ Revoke ${t.full_name}` : `❌ Revoke ${t.telegram_id}`;
+      buttons.push([Markup.button.callback(label, `admin_role_revoke_${t.telegram_id}`)]);
+    }
+
+    return { text: msg, keyboard: Markup.inlineKeyboard(buttons) };
+  }
+
   bot.command('roles', requireAdmin, async (ctx) => {
     const text = ctx.message.text.trim();
     const parts = text.split(/\s+/).slice(1);
@@ -270,66 +457,84 @@ function registerAdminHandlers(bot) {
       const targetId = parts[1];
 
       if (!isValidTelegramId(targetId)) {
-        return ctx.reply('❌ Invalid Telegram ID.');
+        return ctx.reply('❌ Invalid Telegram ID. Please enter a valid numeric ID (5–15 digits).');
       }
 
       if (subAction === 'add' || subAction === 'grant') {
         try {
           assignRole(targetId, 'treasurer', ctx.from.id);
-          return ctx.reply(`✅ Successfully granted *Treasurer* role to Telegram ID \`${targetId}\`.`, { parse_mode: 'Markdown' });
+          await notifyUserRoleChanged(ctx.telegram, targetId, 'treasurer');
+          return ctx.reply(
+            `✅ Successfully granted <b>Treasurer</b> role to Telegram ID <code>${escapeHtml(targetId)}</code>.\n` +
+            `Their menu keyboard has been automatically updated on their device!`,
+            { parse_mode: 'HTML' }
+          );
         } catch (err) {
           return ctx.reply(`❌ Failed to assign role: ${err.message}`);
         }
       } else if (subAction === 'remove' || subAction === 'revoke') {
         try {
           revokeRole(targetId, ctx.from.id);
-          return ctx.reply(`✅ Successfully revoked staff role from Telegram ID \`${targetId}\`.`, { parse_mode: 'Markdown' });
+          await notifyUserRoleChanged(ctx.telegram, targetId, 'member');
+          return ctx.reply(
+            `✅ Successfully revoked staff role from Telegram ID <code>${escapeHtml(targetId)}</code>.\n` +
+            `Their menu keyboard has been automatically updated on their device!`,
+            { parse_mode: 'HTML' }
+          );
         } catch (err) {
           return ctx.reply(`❌ Failed to revoke role: ${err.message}`);
         }
       }
     }
 
-    const rolesList = listRoles();
-    let msg = `🛡️ *Authorized System Roles*\n\n`;
-    for (const r of rolesList) {
-      const name = r.full_name ? ` (${r.full_name})` : '';
-      msg += `• *${r.role.toUpperCase()}*: \`${r.telegram_id}\`${name}\n  _Assigned by: ${r.assigned_by} on ${r.created_at.slice(0, 10)}_\n\n`;
-    }
-
-    msg += `*To add a treasurer:*\n\`/roles add <telegram_id>\`\n\n`;
-    msg += `*To remove a treasurer:*\n\`/roles remove <telegram_id>\``;
-
-    await ctx.reply(msg, { parse_mode: 'Markdown' });
+    const { text: msg, keyboard } = getRolesView();
+    return ctx.reply(msg, { parse_mode: 'HTML', ...keyboard });
   });
 
   bot.hears(/^(?:🛡️\s*)?Manage Roles$/i, requireAdmin, async (ctx) => {
-    const rolesList = listRoles();
-    let msg = `🛡️ *Authorized System Roles*\n\n`;
-    for (const r of rolesList) {
-      const name = r.full_name ? ` (${r.full_name})` : '';
-      msg += `• *${r.role.toUpperCase()}*: \`${r.telegram_id}\`${name}\n  _Assigned by: ${r.assigned_by} on ${r.created_at.slice(0, 10)}_\n\n`;
-    }
-
-    msg += `*To add a treasurer:*\n\`/roles add <telegram_id>\`\n\n`;
-    msg += `*To remove a treasurer:*\n\`/roles remove <telegram_id>\``;
-
-    await ctx.reply(msg, { parse_mode: 'Markdown' });
+    const { text: msg, keyboard } = getRolesView();
+    await ctx.reply(msg, { parse_mode: 'HTML', ...keyboard });
   });
 
   bot.action('menu_roles', requireAdmin, async (ctx) => {
     await ctx.answerCbQuery();
-    const rolesList = listRoles();
-    let msg = `🛡️ *Authorized System Roles*\n\n`;
-    for (const r of rolesList) {
-      const name = r.full_name ? ` (${r.full_name})` : '';
-      msg += `• *${r.role.toUpperCase()}*: \`${r.telegram_id}\`${name}\n  _Assigned by: ${r.assigned_by} on ${r.created_at.slice(0, 10)}_\n\n`;
+    const { text: msg, keyboard } = getRolesView();
+    await ctx.reply(msg, { parse_mode: 'HTML', ...keyboard });
+  });
+
+  bot.action('admin_role_prompt_add', requireAdmin, async (ctx) => {
+    await ctx.answerCbQuery();
+    setSession(ctx.from.id, { step: 'ROLE_WAIT_ADD_ID' });
+    await ctx.reply(
+      `🛡️ <b>Add Treasurer Role</b>\n\n` +
+      `Please enter the numeric <b>Telegram ID</b> of the member you want to grant Treasurer privileges to (e.g. <code>7862773644</code>):`,
+      {
+        parse_mode: 'HTML',
+        ...getCancelKeyboard(),
+      }
+    );
+  });
+
+  bot.action(/^admin_role_revoke_(\d+)$/, requireAdmin, async (ctx) => {
+    await ctx.answerCbQuery();
+    const targetId = ctx.match[1];
+    try {
+      revokeRole(targetId, ctx.from.id);
+      await notifyUserRoleChanged(ctx.telegram, targetId, 'member');
+
+      await ctx.reply(
+        `✅ Successfully revoked Treasurer role from Telegram ID <code>${escapeHtml(targetId)}</code>.\n` +
+        `Their menu keyboard has been automatically updated.`,
+        { parse_mode: 'HTML' }
+      );
+
+      const { text: msg, keyboard } = getRolesView();
+      try {
+        await ctx.editMessageText(msg, { parse_mode: 'HTML', ...keyboard });
+      } catch (_) {}
+    } catch (err) {
+      await ctx.reply(`❌ Failed to revoke role: ${err.message}`);
     }
-
-    msg += `*To add a treasurer:*\n\`/roles add <telegram_id>\`\n\n`;
-    msg += `*To remove a treasurer:*\n\`/roles remove <telegram_id>\``;
-
-    await ctx.reply(msg, { parse_mode: 'Markdown' });
   });
 
   // ==========================================
@@ -403,7 +608,7 @@ function registerAdminHandlers(bot) {
   // ==========================================
   // /audit - System Audit History
   // ==========================================
-  bot.command('audit', requireAdmin, async (ctx) => {
+  function formatAuditTrailMessage() {
     const db = getDatabase();
     const logs = db.prepare(`
       SELECT * FROM audit_log
@@ -412,10 +617,10 @@ function registerAdminHandlers(bot) {
     `).all();
 
     if (logs.length === 0) {
-      return ctx.reply('No audit log entries recorded yet.');
+      return '<i>No audit log entries recorded yet.</i>';
     }
 
-    let msg = `🔍 *System Audit Trail (Last 10 Actions)*\n\n`;
+    let msg = `🔍 <b>System Audit Trail (Last 10 Actions)</b>\n\n`;
     for (const l of logs) {
       let details = '';
       try {
@@ -425,67 +630,27 @@ function registerAdminHandlers(bot) {
         details = l.details_json || '';
       }
 
-      msg += `• *#${l.id} [${l.action}]* — ${l.created_at}\n  _Actor:_ \`${l.actor_telegram_id}\` | _Entity:_ ${l.entity_type} (#${l.entity_id || 'N/A'})\n  _${details}_\n\n`;
+      msg += `• <b>#${l.id} [${escapeHtml(l.action)}]</b> — ${escapeHtml(l.created_at)}\n`;
+      msg += `  <i>Actor:</i> <code>${escapeHtml(l.actor_telegram_id)}</code> | <i>Entity:</i> ${escapeHtml(l.entity_type)} (#${escapeHtml(l.entity_id || 'N/A')})\n`;
+      if (details) {
+        msg += `  <i>${escapeHtml(details)}</i>\n`;
+      }
+      msg += `\n`;
     }
+    return msg;
+  }
 
-    await ctx.reply(msg, { parse_mode: 'Markdown' });
+  bot.command('audit', requireAdmin, async (ctx) => {
+    await ctx.reply(formatAuditTrailMessage(), { parse_mode: 'HTML' });
   });
 
   bot.hears(/^(?:🔍\s*)?Audit Log$/i, requireAdmin, async (ctx) => {
-    const db = getDatabase();
-    const logs = db.prepare(`
-      SELECT * FROM audit_log
-      ORDER BY id DESC
-      LIMIT 10
-    `).all();
-
-    if (logs.length === 0) {
-      return ctx.reply('No audit log entries recorded yet.');
-    }
-
-    let msg = `🔍 *System Audit Trail (Last 10 Actions)*\n\n`;
-    for (const l of logs) {
-      let details = '';
-      try {
-        const parsed = JSON.parse(l.details_json);
-        details = Object.entries(parsed).map(([k, v]) => `${k}: ${v}`).join(', ');
-      } catch (_) {
-        details = l.details_json || '';
-      }
-
-      msg += `• *#${l.id} [${l.action}]* — ${l.created_at}\n  _Actor:_ \`${l.actor_telegram_id}\` | _Entity:_ ${l.entity_type} (#${l.entity_id || 'N/A'})\n  _${details}_\n\n`;
-    }
-
-    await ctx.reply(msg, { parse_mode: 'Markdown' });
+    await ctx.reply(formatAuditTrailMessage(), { parse_mode: 'HTML' });
   });
 
   bot.action('menu_audit', requireAdmin, async (ctx) => {
     await ctx.answerCbQuery();
-    const db = getDatabase();
-    const logs = db.prepare(`
-      SELECT * FROM audit_log
-      ORDER BY id DESC
-      LIMIT 10
-    `).all();
-
-    if (logs.length === 0) {
-      return ctx.reply('No audit log entries recorded yet.');
-    }
-
-    let msg = `🔍 *System Audit Trail (Last 10 Actions)*\n\n`;
-    for (const l of logs) {
-      let details = '';
-      try {
-        const parsed = JSON.parse(l.details_json);
-        details = Object.entries(parsed).map(([k, v]) => `${k}: ${v}`).join(', ');
-      } catch (_) {
-        details = l.details_json || '';
-      }
-
-      msg += `• *#${l.id} [${l.action}]* — ${l.created_at}\n  _Actor:_ \`${l.actor_telegram_id}\` | _Entity:_ ${l.entity_type} (#${l.entity_id || 'N/A'})\n  _${details}_\n\n`;
-    }
-
-    await ctx.reply(msg, { parse_mode: 'Markdown' });
+    await ctx.reply(formatAuditTrailMessage(), { parse_mode: 'HTML' });
   });
 }
 

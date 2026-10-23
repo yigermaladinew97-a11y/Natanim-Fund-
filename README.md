@@ -147,16 +147,19 @@ npm test
 | Command | Description |
 |---|---|
 | `/start` | Welcome screen, role detection, and quick action menu |
-| `/help` | Detailed help documentation tailored to your current role |
+| `/register` | Self-register as a church member (submits name & phone for admin review) |
 | `/mystatus` | View your monthly obligation, amount paid, balance, and due date |
+| `/submitpayment` | Submit a payment receipt screenshot for admin/treasurer verification |
 | `/history` | View your past 6 months obligations and transaction receipts |
 | `/myprofile` | View your registered church profile details and member ID |
+| `/help` | Detailed help documentation tailored to your current role |
 | `/cancel` | Cancel an in-progress interactive wizard at any time |
 
 ### Treasurer & Administrator Commands
 | Command | Description |
 |---|---|
-| `/paid` | Launch the guided payment recording wizard (Member ➔ Month ➔ Amount ➔ Method ➔ Ref) |
+| `/submissions` | Browse pending payment receipt screenshots with **[ ✅ Verify & Approve ]** and **[ ❌ Reject ]** |
+| `/paid` | Launch manual payment recording wizard (Member ➔ Month ➔ Amount ➔ Method ➔ Ref) |
 | `/report` | Display the monthly financial summary (active members, collected, outstanding, method breakdown) |
 | `/unpaid` | List active members with an outstanding balance for the current month |
 | `/members` | Browse all active registered church members with pagination |
@@ -165,7 +168,8 @@ npm test
 ### Administrator-Only Commands
 | Command | Description |
 |---|---|
-| `/addmember` | Register a new member: `/addmember <telegram_id> <Full Name>` or follow interactive wizard |
+| `/approvals` | Review pending self-registration requests with instant **[ ✅ Approve ]** and **[ ❌ Reject ]** buttons |
+| `/addmember` | Register a new member manually (admin backup option): `/addmember <telegram_id> <Full Name>` |
 | `/deactivate` | Deactivate a member while preserving their full financial transaction history |
 | `/setamount` | Set standard contribution for future months (e.g. `/setamount 500`) |
 | `/roles` | Manage treasurers: `/roles add <telegram_id>` or `/roles remove <telegram_id>` |

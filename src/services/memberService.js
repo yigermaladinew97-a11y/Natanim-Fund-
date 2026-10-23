@@ -37,6 +37,19 @@ function registerMember({ telegramId, fullName, phone, joinedDate, notes, actorT
         WHERE id = ?
       `).run(cleanName, cleanPhone || existing.phone, cleanNotes || existing.notes, existing.id);
 
+      // Ensure current month obligation exists
+      const settingRow = db.prepare("SELECT value FROM settings WHERE key = 'standard_amount_cents'").get();
+      const standardAmount = settingRow ? parseInt(settingRow.value, 10) : 50000;
+      const dueDayRow = db.prepare("SELECT value FROM settings WHERE key = 'due_day_of_month'").get();
+      const dueDay = dueDayRow ? parseInt(dueDayRow.value, 10) : 10;
+      const currentMonth = getCurrentYearMonth();
+      const dueDate = getDueDateForMonth(currentMonth, dueDay);
+
+      db.prepare(`
+        INSERT OR IGNORE INTO obligations (member_id, year_month, amount_due_cents, amount_paid_cents, status, due_date)
+        VALUES (?, ?, ?, 0, 'UNPAID', ?)
+      `).run(existing.id, currentMonth, standardAmount, dueDate);
+
       db.prepare(`
         INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
         VALUES (?, ?, ?, ?, ?)
@@ -178,6 +191,187 @@ function seedDemoMembers(actorTelegramId) {
   return added;
 }
 
+function createRegistrationRequest({ telegramId, username, fullName, phone }) {
+  const tid = String(telegramId).trim();
+  if (!isValidTelegramId(tid)) {
+    throw new Error('Invalid Telegram ID.');
+  }
+
+  const cleanName = sanitizeText(fullName, 100);
+  if (!cleanName || cleanName.length < 2) {
+    throw new Error('Full name is required (at least 2 characters).');
+  }
+
+  const cleanPhone = sanitizeText(phone, 30);
+  const cleanUsername = username ? sanitizeText(username, 50) : null;
+
+  const db = getDatabase();
+
+  const existingMember = db.prepare('SELECT * FROM members WHERE telegram_id = ?').get(tid);
+  if (existingMember && existingMember.status === 'active') {
+    throw new Error(`You are already registered as an active member (${existingMember.full_name}).`);
+  }
+
+  const existingPending = db.prepare("SELECT * FROM registration_requests WHERE telegram_id = ? AND status = 'PENDING'").get(tid);
+  if (existingPending) {
+    throw new Error('You already have a pending registration request under review.');
+  }
+
+  const res = db.prepare(`
+    INSERT INTO registration_requests (telegram_id, username, full_name, phone, status)
+    VALUES (?, ?, ?, ?, 'PENDING')
+  `).run(tid, cleanUsername, cleanName, cleanPhone);
+
+  const requestId = res.lastInsertRowid;
+
+  db.prepare(`
+    INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
+    VALUES (?, ?, ?, ?, ?)
+  `).run('SUBMIT_REGISTRATION', 'registration_requests', String(requestId), tid, JSON.stringify({
+    fullName: cleanName,
+    phone: cleanPhone,
+    username: cleanUsername,
+  }));
+
+  return db.prepare('SELECT * FROM registration_requests WHERE id = ?').get(requestId);
+}
+
+function getPendingRegistrationRequests() {
+  const db = getDatabase();
+  return db.prepare("SELECT * FROM registration_requests WHERE status = 'PENDING' ORDER BY created_at ASC").all();
+}
+
+function getRegistrationRequestById(id) {
+  const db = getDatabase();
+  return db.prepare('SELECT * FROM registration_requests WHERE id = ?').get(id);
+}
+
+function getPendingRequestByTelegramId(telegramId) {
+  const db = getDatabase();
+  return db.prepare("SELECT * FROM registration_requests WHERE telegram_id = ? AND status = 'PENDING' ORDER BY id DESC LIMIT 1").get(String(telegramId).trim());
+}
+
+function approveRegistrationRequest(requestId, adminTelegramId) {
+  const db = getDatabase();
+  const req = db.prepare('SELECT * FROM registration_requests WHERE id = ?').get(requestId);
+  if (!req) {
+    throw new Error('Registration request not found.');
+  }
+
+  if (req.status !== 'PENDING') {
+    throw new Error(`This request has already been ${req.status.toLowerCase()}.`);
+  }
+
+  const tx = db.transaction(() => {
+    const member = registerMember({
+      telegramId: req.telegram_id,
+      fullName: req.full_name,
+      phone: req.phone,
+      actorTelegramId: adminTelegramId,
+    });
+
+    db.prepare(`
+      UPDATE registration_requests
+      SET status = 'APPROVED', reviewed_by = ?, reviewed_at = datetime('now'), updated_at = datetime('now')
+      WHERE id = ?
+    `).run(String(adminTelegramId), requestId);
+
+    db.prepare(`
+      INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
+      VALUES (?, ?, ?, ?, ?)
+    `).run('APPROVE_REGISTRATION', 'registration_requests', String(requestId), String(adminTelegramId), JSON.stringify({
+      memberId: member.id,
+      fullName: member.full_name,
+      telegramId: member.telegram_id,
+    }));
+
+    return {
+      member,
+      request: db.prepare('SELECT * FROM registration_requests WHERE id = ?').get(requestId),
+    };
+  });
+
+  return tx();
+}
+
+function rejectRegistrationRequest(requestId, adminTelegramId, reason = 'Declined by administrator') {
+  const db = getDatabase();
+  const req = db.prepare('SELECT * FROM registration_requests WHERE id = ?').get(requestId);
+  if (!req) {
+    throw new Error('Registration request not found.');
+  }
+
+  if (req.status !== 'PENDING') {
+    throw new Error(`This request has already been ${req.status.toLowerCase()}.`);
+  }
+
+  const cleanReason = sanitizeText(reason, 255) || 'Declined by administrator';
+
+  db.prepare(`
+    UPDATE registration_requests
+    SET status = 'REJECTED', reviewed_by = ?, reviewed_at = datetime('now'), rejection_reason = ?, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(String(adminTelegramId), cleanReason, requestId);
+
+  db.prepare(`
+    INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
+    VALUES (?, ?, ?, ?, ?)
+  `).run('REJECT_REGISTRATION', 'registration_requests', String(requestId), String(adminTelegramId), JSON.stringify({
+    telegramId: req.telegram_id,
+    fullName: req.full_name,
+    reason: cleanReason,
+  }));
+
+  return db.prepare('SELECT * FROM registration_requests WHERE id = ?').get(requestId);
+}
+
+async function notifyAdminsNewRegistration(telegram, request) {
+  const { getAdminTelegramIds } = require('./permissions');
+  const { Markup } = require('telegraf');
+  const { escapeHtml } = require('../utils/formatters');
+
+  const adminIds = getAdminTelegramIds();
+  const db = getDatabase();
+  const existingMember = db.prepare('SELECT * FROM members WHERE telegram_id = ?').get(String(request.telegram_id));
+  const isReactivation = existingMember && existingMember.status === 'inactive';
+
+  const title = isReactivation
+    ? '🔄 <b>Member Re-activation Request!</b>'
+    : '📥 <b>New Member Registration Request!</b>';
+
+  const note = isReactivation
+    ? '\n⚠️ <i>Applicant was previously deactivated. Approving will re-activate their membership.</i>\n'
+    : '';
+
+  const text =
+    `${title}\n\n` +
+    `• <b>Full Name:</b> ${escapeHtml(request.full_name)}\n` +
+    `• <b>Phone:</b> ${escapeHtml(request.phone || 'Not provided')}\n` +
+    `• <b>Telegram ID:</b> <code>${escapeHtml(request.telegram_id)}</code>\n` +
+    (request.username ? `• <b>Username:</b> @${escapeHtml(request.username)}\n` : '') +
+    `• <b>Submitted:</b> ${escapeHtml(request.created_at)}\n` +
+    note +
+    `\nReview and choose an action:`;
+
+  const keyboard = Markup.inlineKeyboard([
+    [
+      Markup.button.callback('✅ Approve Member', `reg_approve_${request.id}`),
+      Markup.button.callback('❌ Reject', `reg_reject_${request.id}`),
+    ],
+  ]);
+
+  for (const adminId of adminIds) {
+    try {
+      await telegram.sendMessage(adminId, text, {
+        parse_mode: 'HTML',
+        ...keyboard,
+      });
+    } catch (err) {
+      console.warn(`[Registration] Could not send notification to admin ${adminId}:`, err.message);
+    }
+  }
+}
+
 module.exports = {
   registerMember,
   deactivateMember,
@@ -186,4 +380,11 @@ module.exports = {
   listActiveMembers,
   getAllActiveMembers,
   seedDemoMembers,
+  createRegistrationRequest,
+  getPendingRegistrationRequests,
+  getRegistrationRequestById,
+  getPendingRequestByTelegramId,
+  approveRegistrationRequest,
+  rejectRegistrationRequest,
+  notifyAdminsNewRegistration,
 };
