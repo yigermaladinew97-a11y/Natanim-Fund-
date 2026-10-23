@@ -18,6 +18,7 @@ const {
   getOrCreateObligation,
   createPaymentSubmission,
   notifyStaffNewPaymentSubmission,
+  setBankInfo,
 } = require('../services/accounting');
 const { parseMoneyToCents, formatMoney, getCurrentYearMonth, formatPaymentMethod, escapeHtml } = require('../utils/formatters');
 const { getPaymentMethodKeyboard, getCancelKeyboard, getCancelReplyKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
@@ -44,6 +45,8 @@ const MENU_BUTTON_PATTERNS = [
   /^(?:🔄\s*)?Reverse Payment$/i,
   /^(?:📁\s*)?Export CSV$/i,
   /^(?:🔍\s*)?Audit Log$/i,
+  /^(?:🏦\s*)?(?:Church\s+)?(?:Bank\s+)?Accounts(?: Details)?$/i,
+  /^(?:🏦\s*)?Edit Church Accounts$/i,
   /^(?:🏠\s*)?(?:Main Menu|Home)$/i,
 ];
 
@@ -478,6 +481,27 @@ function registerWizardHandler(bot) {
         parse_mode: 'Markdown',
         ...getMainMenuKeyboard(ctx.state?.role),
       });
+    }
+
+    // ----------------------------------------------------
+    // EDIT CHURCH BANK ACCOUNTS WIZARD
+    // ----------------------------------------------------
+    if (session.step === 'ADMIN_SET_BANK_INFO') {
+      const cleanBankText = text.trim();
+      if (cleanBankText.length < 10) {
+        return ctx.reply('❌ Bank account details must be at least 10 characters long. Please try again or tap Cancel:', getCancelKeyboard());
+      }
+      clearSession(userId);
+      setBankInfo(cleanBankText, userId);
+      return ctx.reply(
+        `✅ <b>Church Contribution Accounts Updated Successfully!</b>\n\n` +
+        `Here is the new message members will see:\n\n` +
+        cleanBankText,
+        {
+          parse_mode: 'HTML',
+          ...getMainMenuKeyboard(ctx.state?.role),
+        }
+      );
     }
 
     // ----------------------------------------------------

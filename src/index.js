@@ -13,6 +13,7 @@ const { registerPaymentHandlers } = require('./handlers/payments');
 const { registerReportHandlers } = require('./handlers/reports');
 const { registerReminderHandlers } = require('./handlers/reminders');
 const { registerWizardHandler } = require('./handlers/wizard');
+const { registerBankInfoHandlers } = require('./handlers/bankInfo');
 
 async function createBot() {
   validateConfig();
@@ -36,6 +37,7 @@ async function createBot() {
   registerMemberHandlers(bot);
   registerAdminHandlers(bot);
   registerPaymentHandlers(bot);
+  registerBankInfoHandlers(bot);
   registerReportHandlers(bot);
   registerReminderHandlers(bot);
   registerWizardHandler(bot);
@@ -54,6 +56,7 @@ async function main() {
     try {
       await bot.telegram.setMyCommands([
         { command: 'start', description: 'Open Main Menu & Welcome' },
+        { command: 'bankinfo', description: 'View church contribution bank accounts' },
         { command: 'register', description: 'Register as a Church Fund Member' },
         { command: 'mystatus', description: 'Check monthly contribution status' },
         { command: 'submitpayment', description: 'Upload payment receipt / screenshot' },

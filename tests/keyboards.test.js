@@ -11,7 +11,7 @@ const {
 } = require('../src/utils/keyboards');
 
 test('Keyboards & Menu Button Utilities Tests', async (t) => {
-  await t.test('1. Member role generates persistent Reply Keyboard with 4 buttons', () => {
+  await t.test('1. Member role generates persistent Reply Keyboard with 5 buttons', () => {
     const kb = getMainMenuKeyboard('member');
     assert.ok(kb.reply_markup);
     assert.ok(kb.reply_markup.keyboard);
@@ -19,9 +19,10 @@ test('Keyboards & Menu Button Utilities Tests', async (t) => {
     assert.strictEqual(kb.reply_markup.is_persistent, true);
 
     const rows = kb.reply_markup.keyboard;
-    assert.strictEqual(rows.length, 2);
+    assert.strictEqual(rows.length, 3);
     assert.deepStrictEqual(rows[0], ['📊 My Status', '📜 My History']);
     assert.deepStrictEqual(rows[1], ['👤 My Profile', '📤 Submit Receipt']);
+    assert.deepStrictEqual(rows[2], ['🏦 Church Accounts']);
   });
 
   await t.test('2. Treasurer role includes staff management menu buttons', () => {
@@ -34,6 +35,7 @@ test('Keyboards & Menu Button Utilities Tests', async (t) => {
     assert.ok(flat.includes('👥 Members List'));
     assert.ok(flat.includes('⏳ Unpaid List'));
     assert.ok(flat.includes('📨 Send Reminders'));
+    assert.ok(flat.includes('🏦 Church Accounts'));
     // Should NOT have admin-only buttons
     assert.strictEqual(flat.includes('➕ Add Member'), false);
     assert.strictEqual(flat.includes('🛡️ Manage Roles'), false);
@@ -49,6 +51,7 @@ test('Keyboards & Menu Button Utilities Tests', async (t) => {
     assert.ok(flat.includes('🛑 Deactivate Member'));
     assert.ok(flat.includes('⚙️ Set Standard Amount'));
     assert.ok(flat.includes('🛡️ Manage Roles'));
+    assert.ok(flat.includes('🏦 Edit Church Accounts'));
     assert.ok(flat.includes('🔄 Reverse Payment'));
     assert.ok(flat.includes('📁 Export CSV'));
     assert.ok(flat.includes('🔍 Audit Log'));
