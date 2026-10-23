@@ -22,6 +22,14 @@ function initDatabase(customPath) {
   // Execute schema creation
   db.exec(SCHEMA_SQL);
 
+  // Auto-migration for existing databases
+  try {
+    const subCols = db.prepare('PRAGMA table_info(payment_submissions)').all();
+    if (subCols.length > 0 && !subCols.some((c) => c.name === 'months_count')) {
+      db.prepare('ALTER TABLE payment_submissions ADD COLUMN months_count INTEGER NOT NULL DEFAULT 1').run();
+    }
+  } catch (_) {}
+
   // Seed default settings if not existing
   const insertSetting = db.prepare(`
     INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)

@@ -453,6 +453,7 @@ function createPaymentSubmission({
   amountCents,
   paymentMethod,
   referenceNumber,
+  monthsCount = 1,
   fileId,
   fileUniqueId,
   caption,
@@ -479,14 +480,15 @@ function createPaymentSubmission({
     throw new Error('Screenshot photo or receipt image is required.');
   }
 
+  const cleanMonthsCount = Math.max(1, parseInt(monthsCount, 10) || 1);
   const cleanRef = sanitizeText(referenceNumber, 100);
   const cleanCap = sanitizeText(caption, 255);
 
   const res = db.prepare(`
     INSERT INTO payment_submissions (
       member_id, telegram_id, year_month, amount_cents, payment_method,
-      reference_number, file_id, file_unique_id, caption, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
+      reference_number, months_count, file_id, file_unique_id, caption, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
   `).run(
     memberId,
     String(telegramId),
@@ -494,6 +496,7 @@ function createPaymentSubmission({
     amountCents,
     paymentMethod,
     cleanRef,
+    cleanMonthsCount,
     fileId,
     fileUniqueId || null,
     cleanCap
@@ -508,6 +511,7 @@ function createPaymentSubmission({
     memberId,
     yearMonth,
     amountCents,
+    monthsCount: cleanMonthsCount,
     paymentMethod,
     referenceNumber: cleanRef,
   }));
@@ -536,7 +540,7 @@ function getPaymentSubmissionById(id) {
   `).get(id);
 }
 
-function approvePaymentSubmission(submissionId, reviewerTelegramId, monthsCount = 1) {
+function approvePaymentSubmission(submissionId, reviewerTelegramId, monthsCount = null) {
   const db = getDatabase();
   const sub = db.prepare('SELECT * FROM payment_submissions WHERE id = ?').get(submissionId);
   if (!sub) {
@@ -547,7 +551,9 @@ function approvePaymentSubmission(submissionId, reviewerTelegramId, monthsCount 
     throw new Error(`This payment submission has already been ${sub.status.toLowerCase()}.`);
   }
 
-  const monthsNum = parseInt(monthsCount, 10) || 1;
+  const monthsNum = monthsCount !== null && monthsCount !== undefined
+    ? (parseInt(monthsCount, 10) || 1)
+    : (parseInt(sub.months_count, 10) || 1);
 
   const tx = db.transaction(() => {
     let payment = null;
@@ -655,11 +661,25 @@ async function notifyStaffNewPaymentSubmission(telegram, submission) {
 
   const staffIds = getStaffTelegramIds();
   const currency = getCurrency();
+  const monthsCount = submission.months_count || 1;
+
+  let periodDisplay = submission.year_month;
+  if (monthsCount > 1) {
+    let currentYm = submission.year_month;
+    for (let i = 1; i < monthsCount; i++) {
+      const [y, m] = currentYm.split('-').map(Number);
+      const nextM = m === 12 ? 1 : m + 1;
+      const nextY = m === 12 ? y + 1 : y;
+      currentYm = `${nextY}-${String(nextM).padStart(2, '0')}`;
+    }
+    periodDisplay = `${submission.year_month} to ${currentYm} (${monthsCount} Months)`;
+  }
 
   const caption =
     `💳 <b>New Payment Receipt Submitted!</b>\n\n` +
     `• <b>Member:</b> ${escapeHtml(submission.full_name)} (#${submission.member_id})\n` +
-    `• <b>Period:</b> ${escapeHtml(submission.year_month)}\n` +
+    `• <b>Period:</b> ${escapeHtml(periodDisplay)}\n` +
+    `• <b>Months Stated:</b> ${monthsCount} Month${monthsCount > 1 ? 's' : ''}\n` +
     `• <b>Amount:</b> <b>${escapeHtml(formatMoney(submission.amount_cents, currency))}</b>\n` +
     `• <b>Method:</b> ${escapeHtml(formatPaymentMethod(submission.payment_method))}\n` +
     `• <b>Ref / Tx:</b> ${escapeHtml(submission.reference_number || 'None')}\n` +

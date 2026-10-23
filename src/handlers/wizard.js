@@ -101,6 +101,94 @@ function registerWizardHandler(bot) {
     return finishSelfRegistration(ctx, userId, session.fullName, phone);
   });
 
+  function promptMemberForPaymentMonths(ctx, userId, session, month) {
+    setSession(userId, {
+      ...session,
+      step: 'MEMBER_SUBMIT_WAIT_MONTHS',
+      selectedMonth: month,
+    });
+
+    const monthButtons = [
+      [
+        Markup.button.callback('1 Month', 'mem_sub_cnt_1'),
+        Markup.button.callback('2 Months', 'mem_sub_cnt_2'),
+        Markup.button.callback('3 Months', 'mem_sub_cnt_3'),
+      ],
+      [
+        Markup.button.callback('4 Months', 'mem_sub_cnt_4'),
+        Markup.button.callback('5 Months', 'mem_sub_cnt_5'),
+        Markup.button.callback('6 Months', 'mem_sub_cnt_6'),
+      ],
+      [
+        Markup.button.callback('🗓️ 12 Months (1 Year)', 'mem_sub_cnt_12'),
+        Markup.button.callback('❌ Cancel', 'action_cancel'),
+      ],
+    ];
+
+    return ctx.reply(
+      `📅 *Starting Month:* ${month}\n\n` +
+      `*Step 2/4 — Duration:*\n` +
+      `How many months does this payment cover?\n` +
+      `Tap an option below, or reply with a number (e.g. \`1\`, \`3\`, \`6\`):`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(monthButtons),
+      }
+    );
+  }
+
+  function promptMemberForPaymentAmount(ctx, userId, session, monthsCount) {
+    const count = Math.max(1, Math.min(24, parseInt(monthsCount, 10) || 1));
+    const startMonth = session.selectedMonth;
+    const standardAmount = getStandardAmountCents();
+    const currency = getCurrency();
+
+    let endMonth = startMonth;
+    let currentYm = startMonth;
+    for (let i = 1; i < count; i++) {
+      const [y, m] = currentYm.split('-').map(Number);
+      const nextM = m === 12 ? 1 : m + 1;
+      const nextY = m === 12 ? y + 1 : y;
+      currentYm = `${nextY}-${String(nextM).padStart(2, '0')}`;
+    }
+    endMonth = currentYm;
+
+    let totalDue = 0;
+    if (count === 1) {
+      const obl = getOrCreateObligation(session.memberId, startMonth);
+      totalDue = Math.max(0, obl.amount_due_cents - obl.amount_paid_cents) || obl.amount_due_cents;
+    } else {
+      totalDue = count * standardAmount;
+    }
+
+    const periodDisplay = count === 1 ? startMonth : `${startMonth} to ${endMonth} (${count} Months)`;
+
+    setSession(userId, {
+      ...session,
+      step: 'MEMBER_SUBMIT_WAIT_AMOUNT',
+      monthsCount: count,
+      periodDisplay,
+      dueBalance: totalDue,
+    });
+
+    const buttons = [];
+    if (totalDue > 0) {
+      buttons.push([Markup.button.callback(`💰 Pay ${formatMoney(totalDue, currency)} (${count} mo)`, `mem_sub_amt_${totalDue}`)]);
+    }
+    buttons.push([Markup.button.callback('❌ Cancel', 'action_cancel')]);
+
+    return ctx.reply(
+      `📅 *Covered Period:* ${periodDisplay}\n` +
+      `🎯 *Calculated Contribution:* ${formatMoney(totalDue, currency)}\n\n` +
+      `*Step 3/4 — Payment Amount:*\n` +
+      `Tap below to confirm full amount, or reply with the exact amount you paid:`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(buttons),
+      }
+    );
+  }
+
   async function handleProofUpload(ctx, fileId, fileUniqueId, caption) {
     const userId = ctx.from.id;
     const session = getSession(userId);
@@ -112,6 +200,9 @@ function registerWizardHandler(bot) {
     const currency = getCurrency();
 
     try {
+      const monthsCount = session.monthsCount || 1;
+      const periodDisplay = session.periodDisplay || session.selectedMonth;
+
       const submission = createPaymentSubmission({
         memberId: session.memberId,
         telegramId: userId,
@@ -119,6 +210,7 @@ function registerWizardHandler(bot) {
         amountCents: session.amountCents,
         paymentMethod: session.paymentMethod,
         referenceNumber: caption || null,
+        monthsCount,
         fileId,
         fileUniqueId,
         caption,
@@ -128,13 +220,14 @@ function registerWizardHandler(bot) {
       await ctx.reply(
         `🎉 *Payment Receipt Submitted!*\n\n` +
         `Thank you, *${session.memberName}*!\n` +
-        `Your payment receipt for *${session.selectedMonth}* (*${formatMoney(session.amountCents, currency)}*) has been sent to church leadership for verification.\n\n` +
+        `Your payment receipt for *${periodDisplay}* (*${formatMoney(session.amountCents, currency)}*) has been sent to church leadership for verification.\n\n` +
         `📋 *Submission Details:*\n` +
-        `• *Period:* ${session.selectedMonth}\n` +
+        `• *Period:* ${periodDisplay}\n` +
+        `• *Months Covered:* ${monthsCount} Month${monthsCount > 1 ? 's' : ''}\n` +
         `• *Amount:* ${formatMoney(session.amountCents, currency)}\n` +
         `• *Method:* ${formatPaymentMethod(session.paymentMethod)}\n` +
         `• *Ref / Note:* ${caption || 'None'}\n\n` +
-        `⏳ You will receive an official confirmation message and receipt once approved by the treasurer!`,
+        `⏳ You will receive an official confirmation message and receipt once approved by the church treasurer!`,
         {
           parse_mode: 'Markdown',
           ...getMainMenuKeyboard(userRole),
@@ -238,39 +331,21 @@ function registerWizardHandler(bot) {
     }
 
     // ----------------------------------------------------
-    // MEMBER PAYMENT SUBMISSION WIZARD (Month -> Amount -> Method -> Photo)
+    // MEMBER PAYMENT SUBMISSION WIZARD (Month -> Months Count -> Amount -> Method -> Photo)
     // ----------------------------------------------------
     if (session.step === 'MEMBER_SUBMIT_MONTH') {
       if (!isValidYearMonth(text)) {
         return ctx.reply('❌ Invalid period format. Please enter YYYY-MM (e.g. 2026-10) or tap Cancel:', getCancelReplyKeyboard());
       }
-      const obl = getOrCreateObligation(session.memberId, text);
-      const dueBalance = Math.max(0, obl.amount_due_cents - obl.amount_paid_cents) || obl.amount_due_cents;
-      const currency = getCurrency();
+      return promptMemberForPaymentMonths(ctx, userId, session, text);
+    }
 
-      setSession(userId, {
-        ...session,
-        step: 'MEMBER_SUBMIT_WAIT_AMOUNT',
-        selectedMonth: text,
-        dueBalance,
-      });
-
-      const buttons = [];
-      if (dueBalance > 0) {
-        buttons.push([Markup.button.callback(`💰 Pay Full Balance (${formatMoney(dueBalance, currency)})`, `mem_sub_amt_${dueBalance}`)]);
+    if (session.step === 'MEMBER_SUBMIT_WAIT_MONTHS') {
+      const cleanNum = parseInt(text.trim(), 10);
+      if (Number.isNaN(cleanNum) || cleanNum < 1 || cleanNum > 24) {
+        return ctx.reply('❌ Please enter a valid number of months (1 to 24) or tap an option above:', getCancelReplyKeyboard());
       }
-      buttons.push([Markup.button.callback('❌ Cancel', 'action_cancel')]);
-
-      return ctx.reply(
-        `📅 *Selected Period:* ${text}\n` +
-        `🎯 *Balance Due:* ${formatMoney(dueBalance, currency)}\n\n` +
-        `*Step 2/3 — Payment Amount:*\n` +
-        `Tap below or type the amount you paid (e.g. \`500\` or \`1000\`):`,
-        {
-          parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard(buttons),
-        }
-      );
+      return promptMemberForPaymentAmount(ctx, userId, session, cleanNum);
     }
 
     if (session.step === 'MEMBER_SUBMIT_WAIT_AMOUNT') {
@@ -293,8 +368,9 @@ function registerWizardHandler(bot) {
       ];
 
       return ctx.reply(
-        `💰 *Amount:* ${formatMoney(cents, currency)}\n\n` +
-        `*Step 3/3 — Payment Method:*\n` +
+        `💰 *Amount:* ${formatMoney(cents, currency)}\n` +
+        `📅 *Period:* ${session.periodDisplay || session.selectedMonth}\n\n` +
+        `*Step 4/4 — Payment Method:*\n` +
         `How did you make this payment?`,
         {
           parse_mode: 'Markdown',
@@ -691,35 +767,17 @@ function registerWizardHandler(bot) {
     if (!session || session.step !== 'MEMBER_SUBMIT_MONTH') {
       return ctx.reply('Session expired. Please start again with /submitpayment.');
     }
+    return promptMemberForPaymentMonths(ctx, userId, session, ctx.match[1]);
+  });
 
-    const month = ctx.match[1];
-    const obl = getOrCreateObligation(session.memberId, month);
-    const dueBalance = Math.max(0, obl.amount_due_cents - obl.amount_paid_cents) || obl.amount_due_cents;
-    const currency = getCurrency();
-
-    setSession(userId, {
-      ...session,
-      step: 'MEMBER_SUBMIT_WAIT_AMOUNT',
-      selectedMonth: month,
-      dueBalance,
-    });
-
-    const buttons = [];
-    if (dueBalance > 0) {
-      buttons.push([Markup.button.callback(`💰 Pay Full Balance (${formatMoney(dueBalance, currency)})`, `mem_sub_amt_${dueBalance}`)]);
+  bot.action(/^mem_sub_cnt_(\d+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.from.id;
+    const session = getSession(userId);
+    if (!session || (session.step !== 'MEMBER_SUBMIT_WAIT_MONTHS' && session.step !== 'MEMBER_SUBMIT_MONTH')) {
+      return ctx.reply('Session expired. Please start again with /submitpayment.');
     }
-    buttons.push([Markup.button.callback('❌ Cancel', 'action_cancel')]);
-
-    await ctx.reply(
-      `📅 *Selected Period:* ${month}\n` +
-      `🎯 *Balance Due:* ${formatMoney(dueBalance, currency)}\n\n` +
-      `*Step 2/3 — Payment Amount:*\n` +
-      `Tap below to pay the full balance, or type the amount you paid (e.g. \`500\` or \`1000\`):`,
-      {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard(buttons),
-      }
-    );
+    return promptMemberForPaymentAmount(ctx, userId, session, ctx.match[1]);
   });
 
   bot.action(/^mem_sub_amt_(\d+)$/, async (ctx) => {
@@ -747,8 +805,9 @@ function registerWizardHandler(bot) {
     ];
 
     await ctx.reply(
-      `💰 *Amount:* ${formatMoney(amountCents, currency)}\n\n` +
-      `*Step 3/3 — Payment Method:*\n` +
+      `💰 *Amount:* ${formatMoney(amountCents, currency)}\n` +
+      `📅 *Period:* ${session.periodDisplay || session.selectedMonth}\n\n` +
+      `*Step 4/4 — Payment Method:*\n` +
       `How did you make this payment?`,
       {
         parse_mode: 'Markdown',
@@ -776,7 +835,8 @@ function registerWizardHandler(bot) {
 
     await ctx.reply(
       `✅ *Payment Details:*\n` +
-      `• *Period:* ${session.selectedMonth}\n` +
+      `• *Period:* ${session.periodDisplay || session.selectedMonth}\n` +
+      `• *Months Covered:* ${session.monthsCount || 1} Month${(session.monthsCount || 1) > 1 ? 's' : ''}\n` +
       `• *Amount:* ${formatMoney(session.amountCents, currency)}\n` +
       `• *Method:* ${formatPaymentMethod(paymentMethod)}\n\n` +
       `📸 *Please send your payment screenshot or receipt photo now:*\n` +

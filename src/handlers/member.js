@@ -120,9 +120,9 @@ async function startMemberPaymentSubmission(ctx) {
   ];
 
   await ctx.reply(
-    `📤 *Submit Payment Receipt — Step 1/3*\n\n` +
+    `📤 *Submit Payment Receipt — Step 1/4*\n\n` +
     `👤 *Member:* ${member.full_name}\n\n` +
-    `Select the contribution period this payment was made for (or reply with another \`YYYY-MM\`):`,
+    `Select the *starting contribution period* this payment was made for (or reply with another \`YYYY-MM\`):`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard(buttons),

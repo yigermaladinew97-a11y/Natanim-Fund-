@@ -68,9 +68,23 @@ function registerPaymentHandlers(bot) {
     });
 
     for (const sub of list) {
+      const monthsCount = sub.months_count || 1;
+      let periodDisplay = sub.year_month;
+      if (monthsCount > 1) {
+        let currentYm = sub.year_month;
+        for (let i = 1; i < monthsCount; i++) {
+          const [y, m] = currentYm.split('-').map(Number);
+          const nextM = m === 12 ? 1 : m + 1;
+          const nextY = m === 12 ? y + 1 : y;
+          currentYm = `${nextY}-${String(nextM).padStart(2, '0')}`;
+        }
+        periodDisplay = `${sub.year_month} to ${currentYm} (${monthsCount} Months)`;
+      }
+
       const caption =
         `👤 *${sub.full_name}* (#${sub.member_id})\n` +
-        `• *Period:* ${sub.year_month}\n` +
+        `• *Period:* ${periodDisplay}\n` +
+        `• *Months:* ${monthsCount} Month${monthsCount > 1 ? 's' : ''}\n` +
         `• *Amount:* *${formatMoney(sub.amount_cents, currency)}*\n` +
         `• *Method:* ${formatPaymentMethod(sub.payment_method)}\n` +
         `• *Ref / Tx:* ${sub.reference_number || 'None'}\n` +
@@ -119,33 +133,52 @@ function registerPaymentHandlers(bot) {
 
     const currency = getCurrency();
     const standardAmount = getStandardAmountCents();
-    const suggestedMonths = Math.max(1, Math.round(sub.amount_cents / standardAmount));
+    const memberMonths = sub.months_count || 1;
+    const suggestedMonths = memberMonths > 1
+      ? memberMonths
+      : Math.max(1, Math.round(sub.amount_cents / standardAmount));
+
+    let periodDisplay = sub.year_month;
+    if (memberMonths > 1) {
+      let currentYm = sub.year_month;
+      for (let i = 1; i < memberMonths; i++) {
+        const [y, m] = currentYm.split('-').map(Number);
+        const nextM = m === 12 ? 1 : m + 1;
+        const nextY = m === 12 ? y + 1 : y;
+        currentYm = `${nextY}-${String(nextM).padStart(2, '0')}`;
+      }
+      periodDisplay = `${sub.year_month} to ${currentYm} (${memberMonths} Months)`;
+    }
 
     const text =
       `💳 <b>Approve Contribution Receipt</b>\n\n` +
       `• <b>Member:</b> ${escapeHtml(sub.full_name)} (#${sub.member_id})\n` +
       `• <b>Submitted Amount:</b> <b>${escapeHtml(formatMoney(sub.amount_cents, currency))}</b>\n` +
       `• <b>Starting Month:</b> <code>${escapeHtml(sub.year_month)}</code>\n` +
+      `• <b>Period:</b> ${escapeHtml(periodDisplay)}\n` +
+      `• <b>Member Stated:</b> ${memberMonths} Month${memberMonths > 1 ? 's' : ''}\n` +
       `• <b>Standard Rate:</b> ${escapeHtml(formatMoney(standardAmount, currency))} / month\n\n` +
-      `💡 <i>Suggested: ${formatMoney(sub.amount_cents, currency)} ÷ ${formatMoney(standardAmount, currency)} = ${suggestedMonths} Month(s)</i>\n\n` +
+      `💡 <i>Suggested: ${suggestedMonths} Month(s)</i>\n\n` +
       `❓ <b>How many months does this payment cover?</b>`;
+
+    const getBtnLabel = (n, label) => (n === suggestedMonths ? `⭐ ${label}` : label);
 
     const buttons = [
       [
-        Markup.button.callback(`1 Month (${formatMoney(standardAmount, currency)})`, `sub_confirm_${submissionId}_1`),
-        Markup.button.callback(`2 Months`, `sub_confirm_${submissionId}_2`),
+        Markup.button.callback(getBtnLabel(1, `1 Month (${formatMoney(standardAmount, currency)})`), `sub_confirm_${submissionId}_1`),
+        Markup.button.callback(getBtnLabel(2, '2 Months'), `sub_confirm_${submissionId}_2`),
       ],
       [
-        Markup.button.callback(`3 Months`, `sub_confirm_${submissionId}_3`),
-        Markup.button.callback(`4 Months`, `sub_confirm_${submissionId}_4`),
+        Markup.button.callback(getBtnLabel(3, '3 Months'), `sub_confirm_${submissionId}_3`),
+        Markup.button.callback(getBtnLabel(4, '4 Months'), `sub_confirm_${submissionId}_4`),
       ],
       [
-        Markup.button.callback(`5 Months`, `sub_confirm_${submissionId}_5`),
-        Markup.button.callback(`6 Months`, `sub_confirm_${submissionId}_6`),
+        Markup.button.callback(getBtnLabel(5, '5 Months'), `sub_confirm_${submissionId}_5`),
+        Markup.button.callback(getBtnLabel(6, '6 Months'), `sub_confirm_${submissionId}_6`),
       ],
       [
-        Markup.button.callback(`12 Months (1 Year)`, `sub_confirm_${submissionId}_12`),
-        Markup.button.callback(`❌ Cancel`, `action_cancel`),
+        Markup.button.callback(getBtnLabel(12, '12 Months (1 Year)'), `sub_confirm_${submissionId}_12`),
+        Markup.button.callback('❌ Cancel', 'action_cancel'),
       ],
     ];
 

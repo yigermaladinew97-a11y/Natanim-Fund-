@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS payment_submissions (
   amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
   payment_method TEXT NOT NULL CHECK(payment_method IN ('cash', 'bank_transfer', 'mobile_money')),
   reference_number TEXT,
+  months_count INTEGER NOT NULL DEFAULT 1,
   file_id TEXT NOT NULL,
   file_unique_id TEXT,
   caption TEXT,
