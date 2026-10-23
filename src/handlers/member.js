@@ -6,9 +6,10 @@ const {
   listMemberPayments,
   getMemberOutstandingTotal,
   getCurrency,
+  getBankInfo,
 } = require('../services/accounting');
 const { setSession } = require('../utils/session');
-const { formatMoney, getCurrentYearMonth, formatStatus, formatPaymentMethod } = require('../utils/formatters');
+const { formatMoney, getCurrentYearMonth, formatStatus, formatPaymentMethod, escapeHtml } = require('../utils/formatters');
 
 async function handleMyStatus(ctx) {
   const member = ctx.state?.member;
@@ -119,12 +120,16 @@ async function startMemberPaymentSubmission(ctx) {
     [Markup.button.callback('❌ Cancel', 'action_cancel')],
   ];
 
+  const cbeInfo = getBankInfo();
+
   await ctx.reply(
-    `📤 *Submit Payment Receipt — Step 1/4*\n\n` +
-    `👤 *Member:* ${member.full_name}\n\n` +
-    `Select the *starting contribution period* this payment was made for (or reply with another \`YYYY-MM\`):`,
+    `📤 <b>Submit Contribution Receipt — Step 1/4</b>\n\n` +
+    `👤 <b>Member:</b> ${escapeHtml(member.full_name)} (#${member.id})\n\n` +
+    `${cbeInfo}\n\n` +
+    `👇 <b>Select the starting period this payment covers:</b>\n` +
+    `<i>(Or reply with another <code>YYYY-MM</code>)</i>`,
     {
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
       ...Markup.inlineKeyboard(buttons),
     }
   );

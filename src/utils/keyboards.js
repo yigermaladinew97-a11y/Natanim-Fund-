@@ -15,7 +15,6 @@ function getMainMenuKeyboard(role) {
   // Member buttons
   buttons.push(['📊 My Status', '📜 My History']);
   buttons.push(['👤 My Profile', '📤 Submit Receipt']);
-  buttons.push(['🏦 Church Accounts']);
 
   // Treasurer / Admin buttons
   if (role === 'admin' || role === 'treasurer') {
@@ -29,7 +28,7 @@ function getMainMenuKeyboard(role) {
     buttons.push(['📥 Pending Approvals']);
     buttons.push(['➕ Add Member', '🛑 Deactivate Member']);
     buttons.push(['⚙️ Set Standard Amount', '🛡️ Manage Roles']);
-    buttons.push(['🏦 Edit Church Accounts', '📁 Export CSV']);
+    buttons.push(['🏦 Edit CBE Account', '📁 Export CSV']);
     buttons.push(['🔄 Reverse Payment', '🔍 Audit Log']);
   }
 
@@ -51,7 +50,6 @@ function getMainMenuInlineKeyboard(role) {
   // Member buttons
   buttons.push([Markup.button.callback('📊 My Status', 'menu_mystatus'), Markup.button.callback('📜 My History', 'menu_history')]);
   buttons.push([Markup.button.callback('👤 My Profile', 'menu_myprofile'), Markup.button.callback('📤 Submit Receipt', 'menu_submit_payment')]);
-  buttons.push([Markup.button.callback('🏦 Church Accounts', 'menu_bankinfo')]);
 
   // Treasurer / Admin buttons
   if (role === 'admin' || role === 'treasurer') {
@@ -65,7 +63,7 @@ function getMainMenuInlineKeyboard(role) {
     buttons.push([Markup.button.callback('📥 Pending Approvals', 'menu_approvals')]);
     buttons.push([Markup.button.callback('➕ Add Member', 'menu_addmember'), Markup.button.callback('🛑 Deactivate Member', 'menu_deactivate')]);
     buttons.push([Markup.button.callback('⚙️ Set Standard Amount', 'menu_setamount'), Markup.button.callback('🛡️ Manage Roles', 'menu_roles')]);
-    buttons.push([Markup.button.callback('🏦 Edit Church Accounts', 'admin_edit_bankinfo'), Markup.button.callback('📁 Export CSV', 'menu_export_csv')]);
+    buttons.push([Markup.button.callback('🏦 Edit CBE Account', 'admin_edit_bankinfo'), Markup.button.callback('📁 Export CSV', 'menu_export_csv')]);
     buttons.push([Markup.button.callback('🔄 Reverse Payment', 'menu_reverse_payment'), Markup.button.callback('🔍 Audit Log', 'menu_audit')]);
   }
 

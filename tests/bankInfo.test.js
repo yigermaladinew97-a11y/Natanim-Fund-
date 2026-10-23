@@ -15,19 +15,19 @@ test('Church Bank Accounts & Info Management Tests', async (t) => {
     if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
   };
 
-  await t.test('1. Default bank info is returned when not configured', () => {
+  await t.test('1. Default bank info is returned when not configured (CBE only)', () => {
     const info = getBankInfo();
     assert.strictEqual(info, DEFAULT_BANK_INFO);
     assert.ok(info.includes('Commercial Bank of Ethiopia'));
-    assert.ok(info.includes('Telebirr'));
     assert.ok(info.includes('1000123456789'));
+    assert.strictEqual(info.includes('Telebirr'), false);
+    assert.strictEqual(info.includes('Awash'), false);
   });
 
   await t.test('2. Admin can update church bank accounts', () => {
     const customBankInfo =
-      '🏦 <b>Updated Church Accounts</b>\n\n' +
+      '🏦 <b>Updated Church CBE Account</b>\n\n' +
       '• <b>CBE:</b> <code>1000999888777</code>\n' +
-      '• <b>Telebirr:</b> <code>0922334455</code>\n' +
       'Account Name: Holy Trinity Church';
 
     setBankInfo(customBankInfo, '999000111');

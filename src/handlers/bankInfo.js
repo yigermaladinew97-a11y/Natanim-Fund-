@@ -12,7 +12,7 @@ async function handleShowBankInfo(ctx) {
   buttons.push([Markup.button.callback('📤 Submit Payment Receipt', 'menu_submit_payment')]);
 
   if (role === 'admin') {
-    buttons.push([Markup.button.callback('✏️ Edit Church Accounts', 'admin_edit_bankinfo')]);
+    buttons.push([Markup.button.callback('✏️ Edit CBE Account', 'admin_edit_bankinfo')]);
   }
 
   return ctx.reply(bankInfoText, {
@@ -24,7 +24,7 @@ async function handleShowBankInfo(ctx) {
 function startEditBankInfo(ctx) {
   setSession(ctx.from.id, { step: 'ADMIN_SET_BANK_INFO' });
   return ctx.reply(
-    `✏️ <b>Edit Church Contribution Accounts</b>\n\n` +
+    `✏️ <b>Edit Church CBE Account</b>\n\n` +
     `Please send the new account details text formatted with HTML.\n\n` +
     `💡 <i>Tip: Put account numbers inside &lt;code&gt;1000123456789&lt;/code&gt; so members can copy them with 1 tap!</i>\n\n` +
     `Reply with the new text or tap Cancel below:`,
@@ -37,11 +37,12 @@ function startEditBankInfo(ctx) {
 
 function registerBankInfoHandlers(bot) {
   bot.command('bankinfo', handleShowBankInfo);
+  bot.command('cbe', handleShowBankInfo);
   bot.command('accounts', handleShowBankInfo);
   bot.command('setbankinfo', requireAdmin, startEditBankInfo);
 
   bot.hears(/^(?:🏦\s*)?(?:Church\s+)?(?:Bank\s+)?Accounts(?: Details)?$/i, handleShowBankInfo);
-  bot.hears(/^(?:🏦\s*)?Edit Church Accounts$/i, requireAdmin, startEditBankInfo);
+  bot.hears(/^(?:🏦\s*)?Edit (?:Church )?CBE Account$/i, requireAdmin, startEditBankInfo);
 
   bot.action('menu_bankinfo', async (ctx) => {
     await ctx.answerCbQuery();

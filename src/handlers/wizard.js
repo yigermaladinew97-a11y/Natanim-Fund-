@@ -46,7 +46,7 @@ const MENU_BUTTON_PATTERNS = [
   /^(?:📁\s*)?Export CSV$/i,
   /^(?:🔍\s*)?Audit Log$/i,
   /^(?:🏦\s*)?(?:Church\s+)?(?:Bank\s+)?Accounts(?: Details)?$/i,
-  /^(?:🏦\s*)?Edit Church Accounts$/i,
+  /^(?:🏦\s*)?Edit (?:Church )?(?:CBE|Bank)?\s*Accounts?$/i,
   /^(?:🏠\s*)?(?:Main Menu|Home)$/i,
 ];
 

@@ -36,22 +36,16 @@ function setStandardAmountCents(amountCents, actorTelegramId) {
 }
 
 const DEFAULT_BANK_INFO =
-  `🏦 <b>Natanim Church Contribution Accounts</b>\n\n` +
-  `• <b>Commercial Bank of Ethiopia (CBE):</b>\n` +
-  `  <code>1000123456789</code>\n` +
-  `  <i>Account Name:</i> Natanim Fund / የናታኒም ፈንድ\n\n` +
-  `• <b>Telebirr:</b>\n` +
-  `  <code>0911223344</code>\n` +
-  `  <i>Account Name:</i> Natanim Fund\n\n` +
-  `• <b>Awash Bank:</b>\n` +
-  `  <code>0132087654321</code>\n` +
-  `  <i>Account Name:</i> Natanim Fund\n\n` +
-  `💡 <i>Tip: Tap any account number above to copy it instantly.</i>\n\n` +
+  `🏦 <b>Natanim Church Official CBE Account</b>\n\n` +
+  `• <b>Bank:</b> Commercial Bank of Ethiopia (CBE)\n` +
+  `• <b>Account Number:</b> <code>1000123456789</code>\n` +
+  `• <b>Account Name:</b> Natanim Fund / የናታኒም ፈንድ\n\n` +
+  `💡 <i>Tip: Tap the account number above to copy it instantly.</i>\n\n` +
   `📌 <b>Instructions:</b>\n` +
-  `1. Transfer your monthly contribution to one of the verified accounts above.\n` +
+  `1. Transfer your contribution via CBE Mobile Banking, CBE Birr, or branch deposit.\n` +
   `2. Put your <b>Name</b> or <b>Member ID</b> in the transfer reason/remark.\n` +
-  `3. Save a screenshot or photo of the confirmation SMS / receipt.\n` +
-  `4. Tap <b>Submit Receipt</b> below to upload it for verification.`;
+  `3. Take a screenshot of the confirmation SMS or receipt.\n` +
+  `4. Upload the screenshot below for verification.`;
 
 function getBankInfo() {
   return getSetting('bank_info', DEFAULT_BANK_INFO);
