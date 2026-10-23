@@ -48,6 +48,7 @@ const MENU_BUTTON_PATTERNS = [
   /^(?:🔍\s*)?Audit Log$/i,
   /^(?:🏦\s*)?(?:Church\s+)?(?:Bank\s+)?Accounts(?: Details)?$/i,
   /^(?:🏦\s*)?Edit (?:Church )?(?:CBE|Bank)?\s*Accounts?$/i,
+  /^(?:📢\s*)?Broadcast (?:Message|Announcement)$/i,
   /^(?:🏠\s*)?(?:Main Menu|Home)$/i,
 ];
 
@@ -252,6 +253,42 @@ function registerWizardHandler(bot) {
   }
 
   bot.on('photo', async (ctx, next) => {
+    const userId = ctx.from.id;
+    const session = getSession(userId);
+
+    if (session && session.step === 'BROADCAST_WAIT_CONTENT') {
+      const photos = ctx.message.photo;
+      if (!photos || photos.length === 0) return next();
+      const largest = photos[photos.length - 1];
+      const caption = ctx.message.caption || '';
+
+      setSession(userId, {
+        ...session,
+        step: 'BROADCAST_CONFIRM_SEND',
+        messageType: 'photo',
+        fileId: largest.file_id,
+        caption,
+      });
+
+      const confirmButtons = [
+        [Markup.button.callback('🚀 Send Broadcast Now', 'broadcast_send_confirm')],
+        [Markup.button.callback('❌ Cancel', 'action_cancel')],
+      ];
+
+      await ctx.replyWithPhoto(largest.file_id, {
+        caption:
+          `📢 <b>Broadcast Preview:</b>\n` +
+          `────────────────────\n` +
+          (caption ? `${caption}\n` : '') +
+          `────────────────────\n` +
+          `👥 <b>Target Audience:</b> ${session.recipientsCount} active church members\n\n` +
+          `⚠️ <i>Send this photo broadcast to all members now?</i>`,
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard(confirmButtons),
+      });
+      return;
+    }
+
     const photos = ctx.message.photo;
     if (!photos || photos.length === 0) return next();
     const largest = photos[photos.length - 1];
@@ -260,6 +297,41 @@ function registerWizardHandler(bot) {
   });
 
   bot.on('document', async (ctx, next) => {
+    const userId = ctx.from.id;
+    const session = getSession(userId);
+
+    if (session && session.step === 'BROADCAST_WAIT_CONTENT') {
+      const doc = ctx.message.document;
+      if (!doc) return next();
+      const caption = ctx.message.caption || '';
+
+      setSession(userId, {
+        ...session,
+        step: 'BROADCAST_CONFIRM_SEND',
+        messageType: 'document',
+        fileId: doc.file_id,
+        caption,
+      });
+
+      const confirmButtons = [
+        [Markup.button.callback('🚀 Send Broadcast Now', 'broadcast_send_confirm')],
+        [Markup.button.callback('❌ Cancel', 'action_cancel')],
+      ];
+
+      await ctx.replyWithDocument(doc.file_id, {
+        caption:
+          `📢 <b>Broadcast Document Preview:</b>\n` +
+          `────────────────────\n` +
+          (caption ? `${caption}\n` : '') +
+          `────────────────────\n` +
+          `👥 <b>Target Audience:</b> ${session.recipientsCount} active church members\n\n` +
+          `⚠️ <i>Send this document broadcast to all members now?</i>`,
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard(confirmButtons),
+      });
+      return;
+    }
+
     const doc = ctx.message.document;
     if (!doc) return next();
     const isImage = doc.mime_type && doc.mime_type.startsWith('image/');
@@ -543,6 +615,41 @@ function registerWizardHandler(bot) {
       } catch (err) {
         return ctx.reply(`❌ Could not update CBE account: ${err.message}`, getMainMenuKeyboard(ctx.state?.role));
       }
+    }
+
+    // ----------------------------------------------------
+    // CHURCH BROADCAST WIZARD (Wait Text Announcement)
+    // ----------------------------------------------------
+    if (session.step === 'BROADCAST_WAIT_CONTENT') {
+      const cleanText = text.trim();
+      if (cleanText.length < 3) {
+        return ctx.reply('❌ Broadcast message is too short. Please enter at least 3 characters or tap Cancel:', getCancelKeyboard());
+      }
+
+      setSession(userId, {
+        ...session,
+        step: 'BROADCAST_CONFIRM_SEND',
+        messageType: 'text',
+        text: cleanText,
+      });
+
+      const confirmButtons = [
+        [Markup.button.callback('🚀 Send Broadcast Now', 'broadcast_send_confirm')],
+        [Markup.button.callback('❌ Cancel', 'action_cancel')],
+      ];
+
+      return ctx.reply(
+        `📢 <b>Broadcast Preview:</b>\n` +
+        `────────────────────\n` +
+        cleanText + '\n' +
+        `────────────────────\n` +
+        `👥 <b>Target Audience:</b> ${session.recipientsCount} active church members\n\n` +
+        `⚠️ <i>Do you want to send this broadcast message to all members now?</i>`,
+        {
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard(confirmButtons),
+        }
+      );
     }
 
     // ----------------------------------------------------

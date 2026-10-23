@@ -14,6 +14,7 @@ const { registerReportHandlers } = require('./handlers/reports');
 const { registerReminderHandlers } = require('./handlers/reminders');
 const { registerWizardHandler } = require('./handlers/wizard');
 const { registerBankInfoHandlers } = require('./handlers/bankInfo');
+const { registerBroadcastHandlers } = require('./handlers/broadcast');
 
 async function createBot() {
   validateConfig();
@@ -38,6 +39,7 @@ async function createBot() {
   registerAdminHandlers(bot);
   registerPaymentHandlers(bot);
   registerBankInfoHandlers(bot);
+  registerBroadcastHandlers(bot);
   registerReportHandlers(bot);
   registerReminderHandlers(bot);
   registerWizardHandler(bot);
@@ -68,6 +70,7 @@ async function main() {
         { command: 'unpaid', description: 'List members with unpaid balances (Staff)' },
         { command: 'members', description: 'Browse active members directory (Staff)' },
         { command: 'remind', description: 'Send reminders to unpaid members (Staff)' },
+        { command: 'broadcast', description: 'Send announcement to members (Admin)' },
         { command: 'approvals', description: 'Review pending registrations (Admin)' },
         { command: 'addmember', description: 'Register new member (Admin backup)' },
         { command: 'help', description: 'Show all bot commands and guide' },

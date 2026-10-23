@@ -29,7 +29,8 @@ function getMainMenuKeyboard(role) {
     buttons.push(['➕ Add Member', '🛑 Deactivate Member']);
     buttons.push(['⚙️ Set Standard Amount', '🛡️ Manage Roles']);
     buttons.push(['🏦 Edit CBE Account', '📁 Export CSV']);
-    buttons.push(['🔄 Reverse Payment', '🔍 Audit Log']);
+    buttons.push(['📢 Broadcast Message', '🔍 Audit Log']);
+    buttons.push(['🔄 Reverse Payment']);
   }
 
   return Markup.keyboard(buttons).resize().persistent();
@@ -64,7 +65,8 @@ function getMainMenuInlineKeyboard(role) {
     buttons.push([Markup.button.callback('➕ Add Member', 'menu_addmember'), Markup.button.callback('🛑 Deactivate Member', 'menu_deactivate')]);
     buttons.push([Markup.button.callback('⚙️ Set Standard Amount', 'menu_setamount'), Markup.button.callback('🛡️ Manage Roles', 'menu_roles')]);
     buttons.push([Markup.button.callback('🏦 Edit CBE Account', 'admin_edit_bankinfo'), Markup.button.callback('📁 Export CSV', 'menu_export_csv')]);
-    buttons.push([Markup.button.callback('🔄 Reverse Payment', 'menu_reverse_payment'), Markup.button.callback('🔍 Audit Log', 'menu_audit')]);
+    buttons.push([Markup.button.callback('📢 Broadcast Message', 'menu_broadcast'), Markup.button.callback('🔍 Audit Log', 'menu_audit')]);
+    buttons.push([Markup.button.callback('🔄 Reverse Payment', 'menu_reverse_payment')]);
   }
 
   return Markup.inlineKeyboard(buttons);

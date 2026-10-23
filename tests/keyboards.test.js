@@ -50,6 +50,7 @@ test('Keyboards & Menu Button Utilities Tests', async (t) => {
     assert.ok(flat.includes('⚙️ Set Standard Amount'));
     assert.ok(flat.includes('🛡️ Manage Roles'));
     assert.ok(flat.includes('🏦 Edit CBE Account'));
+    assert.ok(flat.includes('📢 Broadcast Message'));
     assert.ok(flat.includes('🔄 Reverse Payment'));
     assert.ok(flat.includes('📁 Export CSV'));
     assert.ok(flat.includes('🔍 Audit Log'));
