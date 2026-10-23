@@ -132,5 +132,31 @@ test('Payment Screenshot Submission & Staff Verification Workflow Tests', async 
     assert.ok(staffIds.includes(treasurerId));
   });
 
+  await t.test('7. Multi-month payment approval covers selected consecutive months', () => {
+    const multiSub = createPaymentSubmission({
+      memberId: member.id,
+      telegramId: '300000001',
+      yearMonth: '2026-12',
+      amountCents: 20000, // 200 ETB = 4 months at 50 ETB/mo
+      paymentMethod: 'bank_transfer',
+      referenceNumber: 'MULTI_MONTH_REF_123',
+      fileId: 'photo_multi_month',
+      fileUniqueId: 'unique_multi_month',
+      caption: 'Paid for 4 months',
+    });
+
+    const approved = approvePaymentSubmission(multiSub.id, adminId, 4);
+    assert.strictEqual(approved.submission.status, 'APPROVED');
+    assert.strictEqual(approved.monthsCovered.length, 4);
+    assert.deepStrictEqual(approved.monthsCovered, ['2026-12', '2027-01', '2027-02', '2027-03']);
+
+    // Check all 4 obligations are FULLY_PAID
+    for (const m of ['2026-12', '2027-01', '2027-02', '2027-03']) {
+      const obl = getOrCreateObligation(member.id, m);
+      assert.strictEqual(obl.status, 'FULLY_PAID');
+      assert.strictEqual(obl.amount_paid_cents, 5000);
+    }
+  });
+
   cleanup();
 });

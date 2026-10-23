@@ -4,13 +4,15 @@ const { getAllActiveMembers, getMemberById } = require('../services/memberServic
 const {
   recordPayment,
   getCurrency,
+  getStandardAmountCents,
   getOrCreateObligation,
   getPendingPaymentSubmissions,
+  getPaymentSubmissionById,
   approvePaymentSubmission,
   rejectPaymentSubmission,
 } = require('../services/accounting');
 const { setSession, getSession, clearSession } = require('../utils/session');
-const { parseMoneyToCents, formatMoney, getCurrentYearMonth, formatPaymentMethod, formatStatus } = require('../utils/formatters');
+const { parseMoneyToCents, formatMoney, getCurrentYearMonth, formatPaymentMethod, formatStatus, escapeHtml } = require('../utils/formatters');
 const { getPaymentMethodKeyboard, getCancelKeyboard, getConfirmationKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
 
 function startPaymentWizard(ctx) {
@@ -107,47 +109,106 @@ function registerPaymentHandlers(bot) {
   bot.action(/^sub_approve_(\d+)$/, requireStaff, async (ctx) => {
     await ctx.answerCbQuery();
     const submissionId = parseInt(ctx.match[1], 10);
+    const sub = getPaymentSubmissionById(submissionId);
+    if (!sub) {
+      return ctx.reply('❌ Payment submission not found.');
+    }
+    if (sub.status !== 'PENDING') {
+      return ctx.reply(`⚠️ This payment submission has already been ${sub.status.toLowerCase()}.`);
+    }
+
+    const currency = getCurrency();
+    const standardAmount = getStandardAmountCents();
+    const suggestedMonths = Math.max(1, Math.round(sub.amount_cents / standardAmount));
+
+    const text =
+      `💳 <b>Approve Contribution Receipt</b>\n\n` +
+      `• <b>Member:</b> ${escapeHtml(sub.full_name)} (#${sub.member_id})\n` +
+      `• <b>Submitted Amount:</b> <b>${escapeHtml(formatMoney(sub.amount_cents, currency))}</b>\n` +
+      `• <b>Starting Month:</b> <code>${escapeHtml(sub.year_month)}</code>\n` +
+      `• <b>Standard Rate:</b> ${escapeHtml(formatMoney(standardAmount, currency))} / month\n\n` +
+      `💡 <i>Suggested: ${formatMoney(sub.amount_cents, currency)} ÷ ${formatMoney(standardAmount, currency)} = ${suggestedMonths} Month(s)</i>\n\n` +
+      `❓ <b>How many months does this payment cover?</b>`;
+
+    const buttons = [
+      [
+        Markup.button.callback(`1 Month (${formatMoney(standardAmount, currency)})`, `sub_confirm_${submissionId}_1`),
+        Markup.button.callback(`2 Months`, `sub_confirm_${submissionId}_2`),
+      ],
+      [
+        Markup.button.callback(`3 Months`, `sub_confirm_${submissionId}_3`),
+        Markup.button.callback(`4 Months`, `sub_confirm_${submissionId}_4`),
+      ],
+      [
+        Markup.button.callback(`5 Months`, `sub_confirm_${submissionId}_5`),
+        Markup.button.callback(`6 Months`, `sub_confirm_${submissionId}_6`),
+      ],
+      [
+        Markup.button.callback(`12 Months (1 Year)`, `sub_confirm_${submissionId}_12`),
+        Markup.button.callback(`❌ Cancel`, `action_cancel`),
+      ],
+    ];
+
+    try {
+      await ctx.editMessageCaption(text, {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard(buttons),
+      });
+    } catch (_) {
+      await ctx.reply(text, {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard(buttons),
+      });
+    }
+  });
+
+  bot.action(/^sub_confirm_(\d+)_(\d+)$/, requireStaff, async (ctx) => {
+    await ctx.answerCbQuery();
+    const submissionId = parseInt(ctx.match[1], 10);
+    const monthsCount = parseInt(ctx.match[2], 10) || 1;
     const staffId = ctx.from.id;
     const staffName = ctx.from.first_name || 'Staff';
 
     try {
-      const { payment, submission } = approvePaymentSubmission(submissionId, staffId);
+      const { payment, monthsCovered, txId, submission } = approvePaymentSubmission(submissionId, staffId, monthsCount);
       const currency = getCurrency();
-      const obl = getOrCreateObligation(submission.member_id, submission.year_month);
-      const balanceCents = Math.max(0, obl.amount_due_cents - obl.amount_paid_cents);
+
+      const coveredSummary = monthsCovered.length > 1
+        ? `${monthsCovered[0]} to ${monthsCovered[monthsCovered.length - 1]} (${monthsCovered.length} months)`
+        : monthsCovered[0];
 
       const caption =
-        `✅ *Payment Verified & Approved!*\n\n` +
-        `• *Member:* ${submission.full_name} (#${submission.member_id})\n` +
-        `• *Period:* ${payment.year_month}\n` +
-        `• *Amount:* *${formatMoney(payment.amount_cents, currency)}*\n` +
-        `• *Method:* ${formatPaymentMethod(payment.payment_method)}\n` +
-        `• *Tx ID:* \`${payment.tx_id}\`\n` +
-        `• *Verified By:* ${staffName} (\`${staffId}\`)\n` +
-        `• *Obligation Status:* ${formatStatus(obl.status)}`;
+        `✅ <b>Payment Verified & Approved!</b>\n\n` +
+        `• <b>Member:</b> ${escapeHtml(submission.full_name)} (#${submission.member_id})\n` +
+        `• <b>Months Covered (${monthsCovered.length}):</b> <code>${escapeHtml(coveredSummary)}</code>\n` +
+        `• <b>Total Amount:</b> <b>${escapeHtml(formatMoney(submission.amount_cents, currency))}</b>\n` +
+        `• <b>Payment Method:</b> ${escapeHtml(formatPaymentMethod(submission.payment_method))}\n` +
+        `• <b>Transaction / Batch ID:</b> <code>${escapeHtml(txId || payment.tx_id)}</code>\n` +
+        `• <b>Verified By:</b> ${escapeHtml(staffName)} (<code>${staffId}</code>)\n` +
+        `• <b>Status:</b> 🟢 Fully Paid for all ${monthsCovered.length} month(s)`;
 
       try {
-        await ctx.editMessageCaption(caption, { parse_mode: 'Markdown' });
+        await ctx.editMessageCaption(caption, { parse_mode: 'HTML' });
       } catch (_) {
-        await ctx.reply(caption, { parse_mode: 'Markdown' });
+        await ctx.reply(caption, { parse_mode: 'HTML' });
       }
 
       // Send official digital receipt to member
       try {
+        const coveredList = monthsCovered.join(', ');
         await ctx.telegram.sendMessage(
           submission.telegram_id,
-          `🎉 *Payment Verified & Recorded!*\n\n` +
-          `Hello *${submission.full_name}*, your contribution has been verified by church administration.\n\n` +
-          `🧾 *Official Payment Receipt:*\n` +
-          `• *Transaction ID:* \`${payment.tx_id}\`\n` +
-          `• *Period:* ${payment.year_month}\n` +
-          `• *Amount Paid:* *${formatMoney(payment.amount_cents, currency)}*\n` +
-          `• *Payment Method:* ${formatPaymentMethod(payment.payment_method)}\n` +
-          `• *Status:* ${formatStatus(obl.status)}\n` +
-          `• *Remaining Balance for ${payment.year_month}:* ${formatMoney(balanceCents, currency)}\n\n` +
-          `May God bless your generosity and support for the church! 🕊️`,
+          `🎉 <b>Payment Verified & Recorded!</b>\n\n` +
+          `Hello <b>${escapeHtml(submission.full_name)}</b>, your contribution has been verified by church leadership!\n\n` +
+          `🧾 <b>Official Payment Receipt:</b>\n` +
+          `• <b>Transaction ID:</b> <code>${escapeHtml(txId || payment.tx_id)}</code>\n` +
+          `• <b>Total Amount Paid:</b> <b>${escapeHtml(formatMoney(submission.amount_cents, currency))}</b>\n` +
+          `• <b>Payment Method:</b> ${escapeHtml(formatPaymentMethod(submission.payment_method))}\n` +
+          `• <b>Covered Months (${monthsCovered.length}):</b> <code>${escapeHtml(coveredList)}</code>\n` +
+          `• <b>Status:</b> 🟢 Fully Paid for all covered periods!\n\n` +
+          `May God bless your generosity and continuous support for the church! 🕊️`,
           {
-            parse_mode: 'Markdown',
+            parse_mode: 'HTML',
             ...getMainMenuKeyboard('member'),
           }
         );
@@ -170,26 +231,26 @@ function registerPaymentHandlers(bot) {
       const currency = getCurrency();
 
       const caption =
-        `❌ *Payment Submission Rejected*\n\n` +
-        `• *Member:* ${submission.full_name} (#${submission.member_id})\n` +
-        `• *Amount:* ${formatMoney(submission.amount_cents, currency)}\n` +
-        `• *Period:* ${submission.year_month}\n` +
-        `• *Rejected By:* ${staffName} (\`${staffId}\`)\n`;
+        `❌ <b>Payment Submission Rejected</b>\n\n` +
+        `• <b>Member:</b> ${escapeHtml(submission.full_name)} (#${submission.member_id})\n` +
+        `• <b>Amount:</b> ${escapeHtml(formatMoney(submission.amount_cents, currency))}\n` +
+        `• <b>Period:</b> ${escapeHtml(submission.year_month)}\n` +
+        `• <b>Rejected By:</b> ${escapeHtml(staffName)} (<code>${staffId}</code>)\n`;
 
       try {
-        await ctx.editMessageCaption(caption, { parse_mode: 'Markdown' });
+        await ctx.editMessageCaption(caption, { parse_mode: 'HTML' });
       } catch (_) {
-        await ctx.reply(caption, { parse_mode: 'Markdown' });
+        await ctx.reply(caption, { parse_mode: 'HTML' });
       }
 
       // Notify the member
       try {
         await ctx.telegram.sendMessage(
           submission.telegram_id,
-          `⚠️ *Payment Verification Notice*\n\n` +
-          `Hello *${submission.full_name}*, your payment submission of *${formatMoney(submission.amount_cents, currency)}* for *${submission.year_month}* could not be verified.\n\n` +
-          `Please check that the transfer was sent to the church account and that the screenshot is clear. You can re-submit via /submitpayment or contact the treasurer.`,
-          { parse_mode: 'Markdown' }
+          `⚠️ <b>Payment Verification Notice</b>\n\n` +
+          `Hello <b>${escapeHtml(submission.full_name)}</b>, your payment submission of <b>${escapeHtml(formatMoney(submission.amount_cents, currency))}</b> for <code>${escapeHtml(submission.year_month)}</code> could not be verified.\n\n` +
+          `Please check that the transfer was sent to the church account and that the screenshot is clear. You can re-submit via /submitpayment or contact the church treasurer.`,
+          { parse_mode: 'HTML' }
         );
       } catch (_) {}
     } catch (err) {

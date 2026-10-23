@@ -536,7 +536,7 @@ function getPaymentSubmissionById(id) {
   `).get(id);
 }
 
-function approvePaymentSubmission(submissionId, reviewerTelegramId) {
+function approvePaymentSubmission(submissionId, reviewerTelegramId, monthsCount = 1) {
   const db = getDatabase();
   const sub = db.prepare('SELECT * FROM payment_submissions WHERE id = ?').get(submissionId);
   if (!sub) {
@@ -547,36 +547,69 @@ function approvePaymentSubmission(submissionId, reviewerTelegramId) {
     throw new Error(`This payment submission has already been ${sub.status.toLowerCase()}.`);
   }
 
+  const monthsNum = parseInt(monthsCount, 10) || 1;
+
   const tx = db.transaction(() => {
-    const { payment, obligation } = recordPayment({
-      memberId: sub.member_id,
-      yearMonth: sub.year_month,
-      amountCents: sub.amount_cents,
-      paymentMethod: sub.payment_method,
-      referenceNumber: sub.reference_number,
-      notes: `Approved from member receipt submission #${sub.id}`,
-      recordedBy: reviewerTelegramId,
-    });
+    let payment = null;
+    let obligation = null;
+    let monthsCovered = [sub.year_month];
+    let txId = null;
+
+    if (monthsNum > 1) {
+      const multi = recordMultiMonthPayment({
+        memberId: sub.member_id,
+        startYearMonth: sub.year_month,
+        monthsCount: monthsNum,
+        totalAmountCents: sub.amount_cents,
+        paymentMethod: sub.payment_method,
+        referenceNumber: sub.reference_number,
+        notes: `Approved from receipt submission #${sub.id} (${monthsNum} months)`,
+        recordedBy: reviewerTelegramId,
+      });
+      payment = multi.payments[0] || null;
+      obligation = multi.obligations[0] || null;
+      monthsCovered = multi.monthsCovered;
+      txId = multi.batchTxId;
+    } else {
+      const single = recordPayment({
+        memberId: sub.member_id,
+        yearMonth: sub.year_month,
+        amountCents: sub.amount_cents,
+        paymentMethod: sub.payment_method,
+        referenceNumber: sub.reference_number,
+        notes: `Approved from member receipt submission #${sub.id}`,
+        recordedBy: reviewerTelegramId,
+      });
+      payment = single.payment;
+      obligation = single.obligation;
+      monthsCovered = [single.payment.year_month];
+      txId = single.payment.tx_id;
+    }
 
     db.prepare(`
       UPDATE payment_submissions
       SET status = 'APPROVED', reviewed_by = ?, reviewed_at = datetime('now'), payment_id = ?, updated_at = datetime('now')
       WHERE id = ?
-    `).run(String(reviewerTelegramId), payment.id, submissionId);
+    `).run(String(reviewerTelegramId), payment ? payment.id : null, submissionId);
 
     db.prepare(`
       INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
       VALUES (?, ?, ?, ?, ?)
     `).run('APPROVE_PAYMENT_SUBMISSION', 'payment_submissions', String(submissionId), String(reviewerTelegramId), JSON.stringify({
-      paymentId: payment.id,
-      txId: payment.tx_id,
+      paymentId: payment ? payment.id : null,
+      txId,
       memberId: sub.member_id,
       amountCents: sub.amount_cents,
+      monthsCount: monthsNum,
+      monthsCovered,
     }));
 
     return {
       payment,
       obligation,
+      monthsCovered,
+      txId,
+      monthsCount: monthsNum,
       submission: getPaymentSubmissionById(submissionId),
     };
   });
