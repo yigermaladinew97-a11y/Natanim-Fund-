@@ -40,14 +40,14 @@ function registerAdminHandlers(bot) {
 
     for (const req of list) {
       const text =
-        `👤 *${req.full_name}*\n` +
-        `• *Phone:* ${req.phone || 'Not provided'}\n` +
-        `• *Telegram ID:* \`${req.telegram_id}\`\n` +
-        (req.username ? `• *Username:* @${req.username}\n` : '') +
-        `• *Requested:* ${req.created_at}`;
+        `👤 <b>${escapeHtml(req.full_name)}</b>\n` +
+        `• <b>Phone:</b> ${escapeHtml(req.phone || 'Not provided')}\n` +
+        `• <b>Telegram ID:</b> <code>${escapeHtml(req.telegram_id)}</code>\n` +
+        (req.username ? `• <b>Username:</b> @${escapeHtml(req.username)}\n` : '') +
+        `• <b>Requested:</b> ${escapeHtml(req.created_at)}`;
 
       await ctx.reply(text, {
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
           [
             Markup.button.callback('✅ Approve', `reg_approve_${req.id}`),
@@ -74,29 +74,29 @@ function registerAdminHandlers(bot) {
       const { member, request } = approveRegistrationRequest(requestId, adminId);
 
       const text =
-        `✅ *Member Approved & Registered!*\n\n` +
-        `• *Member:* ${member.full_name} (#${member.id})\n` +
-        `• *Telegram ID:* \`${member.telegram_id}\`\n` +
-        `• *Phone:* ${member.phone || 'Not provided'}\n` +
-        `• *Approved By:* Admin (${ctx.from.first_name || adminId})\n` +
-        `• *Joined Date:* ${member.joined_date}\n\n` +
-        `_Active member registered & current month obligation initialized._`;
+        `✅ <b>Member Approved & Registered!</b>\n\n` +
+        `• <b>Member:</b> ${escapeHtml(member.full_name)} (#${member.id})\n` +
+        `• <b>Telegram ID:</b> <code>${escapeHtml(member.telegram_id)}</code>\n` +
+        `• <b>Phone:</b> ${escapeHtml(member.phone || 'Not provided')}\n` +
+        `• <b>Approved By:</b> Admin (${escapeHtml(ctx.from.first_name || String(adminId))})\n` +
+        `• <b>Joined Date:</b> ${escapeHtml(member.joined_date)}\n\n` +
+        `<i>Active member registered & current month obligation initialized.</i>`;
 
       try {
-        await ctx.editMessageText(text, { parse_mode: 'Markdown' });
+        await ctx.editMessageText(text, { parse_mode: 'HTML' });
       } catch (_) {
-        await ctx.reply(text, { parse_mode: 'Markdown' });
+        await ctx.reply(text, { parse_mode: 'HTML' });
       }
 
       // Notify the member
       try {
         await ctx.telegram.sendMessage(
           request.telegram_id,
-          `🎉 *Congratulations, ${member.full_name}!*\n\n` +
-          `Your registration request for *Natanim Church Fund* has been *approved* by church administrators!\n\n` +
+          `🎉 <b>Congratulations, ${escapeHtml(member.full_name)}!</b>\n\n` +
+          `Your registration request for <b>Natanim Church Fund</b> has been <b>approved</b> by church administrators!\n\n` +
           `You are now an active contributing member. Use the menu below to view your monthly contribution status and profile anytime.`,
           {
-            parse_mode: 'Markdown',
+            parse_mode: 'HTML',
             ...getMainMenuKeyboard('member'),
           }
         );
@@ -117,26 +117,26 @@ function registerAdminHandlers(bot) {
       const request = rejectRegistrationRequest(requestId, adminId);
 
       const text =
-        `❌ *Registration Request Rejected*\n\n` +
-        `• *Applicant:* ${request.full_name}\n` +
-        `• *Telegram ID:* \`${request.telegram_id}\`\n` +
-        `• *Rejected By:* Admin (${ctx.from.first_name || adminId})\n`;
+        `❌ <b>Registration Request Rejected</b>\n\n` +
+        `• <b>Applicant:</b> ${escapeHtml(request.full_name)}\n` +
+        `• <b>Telegram ID:</b> <code>${escapeHtml(request.telegram_id)}</code>\n` +
+        `• <b>Rejected By:</b> Admin (${escapeHtml(ctx.from.first_name || String(adminId))})\n`;
 
       try {
-        await ctx.editMessageText(text, { parse_mode: 'Markdown' });
+        await ctx.editMessageText(text, { parse_mode: 'HTML' });
       } catch (_) {
-        await ctx.reply(text, { parse_mode: 'Markdown' });
+        await ctx.reply(text, { parse_mode: 'HTML' });
       }
 
       // Notify the applicant
       try {
         await ctx.telegram.sendMessage(
           request.telegram_id,
-          `ℹ️ *Registration Update*\n\n` +
-          `Your membership request for *Natanim Church Fund* was not approved at this time.\n\n` +
+          `ℹ️ <b>Registration Update</b>\n\n` +
+          `Your membership request for <b>Natanim Church Fund</b> was not approved at this time.\n\n` +
           `You may review your details and submit a new registration request when ready.`,
           {
-            parse_mode: 'Markdown',
+            parse_mode: 'HTML',
             ...getMainMenuKeyboard('unregistered'),
           }
         );
