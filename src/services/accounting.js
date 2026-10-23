@@ -35,20 +35,60 @@ function setStandardAmountCents(amountCents, actorTelegramId) {
   setSetting('standard_amount_cents', amountCents, actorTelegramId);
 }
 
-const DEFAULT_BANK_INFO =
-  `🏦 <b>Natanim Church Official CBE Account</b>\n\n` +
-  `• <b>Bank:</b> Commercial Bank of Ethiopia (CBE)\n` +
-  `• <b>Account Number:</b> <code>1000123456789</code>\n` +
-  `• <b>Account Name:</b> Natanim Fund / የናታኒም ፈንድ\n\n` +
-  `💡 <i>Tip: Tap the account number above to copy it instantly.</i>\n\n` +
-  `📌 <b>Instructions:</b>\n` +
-  `1. Transfer your contribution via CBE Mobile Banking, CBE Birr, or branch deposit.\n` +
-  `2. Put your <b>Name</b> or <b>Member ID</b> in the transfer reason/remark.\n` +
-  `3. Take a screenshot of the confirmation SMS or receipt.\n` +
-  `4. Upload the screenshot below for verification.`;
+const DEFAULT_CBE_ACCOUNT_NUMBER = '1000123456789';
+const DEFAULT_CBE_ACCOUNT_NAME = 'Natanim Fund / የናታኒም ፈንድ';
+
+function getCbeAccountNumber() {
+  return getSetting('cbe_account_number', DEFAULT_CBE_ACCOUNT_NUMBER);
+}
+
+function getCbeAccountName() {
+  return getSetting('cbe_account_name', DEFAULT_CBE_ACCOUNT_NAME);
+}
+
+function setCbeAccountDetails({ accountNumber, accountName, actorTelegramId }) {
+  const cleanAcc = String(accountNumber || '').replace(/\s+/g, '').trim();
+  if (!cleanAcc || cleanAcc.length < 8) {
+    throw new Error('CBE Account Number must be at least 8 digits long.');
+  }
+
+  const cleanName = sanitizeText(accountName, 100);
+  if (!cleanName || cleanName.length < 2) {
+    throw new Error('Account Name must be at least 2 characters long.');
+  }
+
+  const db = getDatabase();
+  // Clear any legacy custom override so new number & name take effect
+  db.prepare("DELETE FROM settings WHERE key = 'bank_info'").run();
+
+  setSetting('cbe_account_number', cleanAcc, actorTelegramId);
+  setSetting('cbe_account_name', cleanName, actorTelegramId);
+
+  return {
+    accountNumber: cleanAcc,
+    accountName: cleanName,
+  };
+}
 
 function getBankInfo() {
-  return getSetting('bank_info', DEFAULT_BANK_INFO);
+  const custom = getSetting('bank_info', null);
+  if (custom) return custom;
+
+  const accNum = getCbeAccountNumber();
+  const accName = getCbeAccountName();
+
+  return (
+    `🏦 <b>Natanim Church Official CBE Account</b>\n\n` +
+    `• <b>Bank:</b> Commercial Bank of Ethiopia (CBE)\n` +
+    `• <b>Account Number:</b> <code>${accNum}</code>\n` +
+    `• <b>Account Name:</b> ${accName}\n\n` +
+    `💡 <i>Tip: Tap the account number above to copy it instantly.</i>\n\n` +
+    `📌 <b>Instructions:</b>\n` +
+    `1. Transfer your contribution via CBE Mobile Banking, CBE Birr, or branch deposit.\n` +
+    `2. Put your <b>Name</b> or <b>Member ID</b> in the transfer reason/remark.\n` +
+    `3. Take a screenshot of the confirmation SMS or receipt.\n` +
+    `4. Upload the screenshot below for verification.`
+  );
 }
 
 function setBankInfo(text, actorTelegramId) {
@@ -755,6 +795,10 @@ module.exports = {
   notifyStaffNewPaymentSubmission,
   getBankInfo,
   setBankInfo,
-  DEFAULT_BANK_INFO,
+  getCbeAccountNumber,
+  getCbeAccountName,
+  setCbeAccountDetails,
+  DEFAULT_CBE_ACCOUNT_NUMBER,
+  DEFAULT_CBE_ACCOUNT_NAME,
 };
 

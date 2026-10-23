@@ -3,7 +3,14 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { initDatabase, closeDatabase } = require('../src/db');
-const { getBankInfo, setBankInfo, DEFAULT_BANK_INFO } = require('../src/services/accounting');
+const {
+  getBankInfo,
+  getCbeAccountNumber,
+  getCbeAccountName,
+  setCbeAccountDetails,
+  DEFAULT_CBE_ACCOUNT_NUMBER,
+  DEFAULT_CBE_ACCOUNT_NAME,
+} = require('../src/services/accounting');
 
 test('Church Bank Accounts & Info Management Tests', async (t) => {
   const testDbPath = path.resolve(process.cwd(), 'data', 'test_bank_info.db');
@@ -15,36 +22,57 @@ test('Church Bank Accounts & Info Management Tests', async (t) => {
     if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
   };
 
-  await t.test('1. Default bank info is returned when not configured (CBE only)', () => {
+  await t.test('1. Default CBE account number and name are returned when not configured', () => {
+    assert.strictEqual(getCbeAccountNumber(), DEFAULT_CBE_ACCOUNT_NUMBER);
+    assert.strictEqual(getCbeAccountName(), DEFAULT_CBE_ACCOUNT_NAME);
+
     const info = getBankInfo();
-    assert.strictEqual(info, DEFAULT_BANK_INFO);
     assert.ok(info.includes('Commercial Bank of Ethiopia'));
-    assert.ok(info.includes('1000123456789'));
+    assert.ok(info.includes(DEFAULT_CBE_ACCOUNT_NUMBER));
+    assert.ok(info.includes(DEFAULT_CBE_ACCOUNT_NAME));
     assert.strictEqual(info.includes('Telebirr'), false);
     assert.strictEqual(info.includes('Awash'), false);
   });
 
-  await t.test('2. Admin can update church bank accounts', () => {
-    const customBankInfo =
-      '🏦 <b>Updated Church CBE Account</b>\n\n' +
-      '• <b>CBE:</b> <code>1000999888777</code>\n' +
-      'Account Name: Holy Trinity Church';
+  await t.test('2. Admin can update both CBE account number and account name', () => {
+    const updated = setCbeAccountDetails({
+      accountNumber: '1000999888777',
+      accountName: 'St. George Church Fund / የቅዱስ ጊዮርጊስ ፈንድ',
+      actorTelegramId: '999000111',
+    });
 
-    setBankInfo(customBankInfo, '999000111');
-    const updated = getBankInfo();
-    assert.strictEqual(updated, customBankInfo);
-    assert.ok(updated.includes('1000999888777'));
+    assert.strictEqual(updated.accountNumber, '1000999888777');
+    assert.strictEqual(updated.accountName, 'St. George Church Fund / የቅዱስ ጊዮርጊስ ፈንድ');
 
-    // Check audit log
-    const log = db.prepare("SELECT * FROM audit_log WHERE entity_id = 'bank_info'").get();
-    assert.ok(log);
-    assert.strictEqual(log.action, 'UPDATE_SETTING');
-    assert.strictEqual(log.actor_telegram_id, '999000111');
+    assert.strictEqual(getCbeAccountNumber(), '1000999888777');
+    assert.strictEqual(getCbeAccountName(), 'St. George Church Fund / የቅዱስ ጊዮርጊስ ፈንድ');
+
+    const info = getBankInfo();
+    assert.ok(info.includes('1000999888777'));
+    assert.ok(info.includes('St. George Church Fund / የቅዱስ ጊዮርጊስ ፈንድ'));
+
+    // Check audit log for both settings
+    const numLog = db.prepare("SELECT * FROM audit_log WHERE entity_id = 'cbe_account_number'").get();
+    assert.ok(numLog);
+    assert.strictEqual(numLog.action, 'UPDATE_SETTING');
+
+    const nameLog = db.prepare("SELECT * FROM audit_log WHERE entity_id = 'cbe_account_name'").get();
+    assert.ok(nameLog);
+    assert.strictEqual(nameLog.action, 'UPDATE_SETTING');
   });
 
-  await t.test('3. Setting empty or too short bank info throws error', () => {
-    assert.throws(() => setBankInfo('', '999000111'), /at least 10 characters/);
-    assert.throws(() => setBankInfo('short', '999000111'), /at least 10 characters/);
+  await t.test('3. Setting invalid account number or name throws error', () => {
+    // Too short account number
+    assert.throws(
+      () => setCbeAccountDetails({ accountNumber: '12345', accountName: 'Valid Name', actorTelegramId: '1' }),
+      /at least 8 digits/
+    );
+
+    // Too short account name
+    assert.throws(
+      () => setCbeAccountDetails({ accountNumber: '1000123456789', accountName: 'A', actorTelegramId: '1' }),
+      /at least 2 characters/
+    );
   });
 
   cleanup();

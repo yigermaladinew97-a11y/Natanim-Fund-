@@ -1,5 +1,4 @@
-const { Markup } = require('telegraf');
-const { getBankInfo } = require('../services/accounting');
+const { getBankInfo, getCbeAccountNumber, getCbeAccountName } = require('../services/accounting');
 const { setSession } = require('../utils/session');
 const { getCancelKeyboard } = require('../utils/keyboards');
 const { requireAdmin } = require('../middleware/auth');
@@ -22,12 +21,20 @@ async function handleShowBankInfo(ctx) {
 }
 
 function startEditBankInfo(ctx) {
-  setSession(ctx.from.id, { step: 'ADMIN_SET_BANK_INFO' });
+  const curNum = getCbeAccountNumber();
+  const curName = getCbeAccountName();
+
+  setSession(ctx.from.id, {
+    step: 'ADMIN_SET_CBE_ACCOUNT_NUMBER',
+    currentAccountNumber: curNum,
+    currentAccountName: curName,
+  });
+
   return ctx.reply(
-    `✏️ <b>Edit Church CBE Account</b>\n\n` +
-    `Please send the new account details text formatted with HTML.\n\n` +
-    `💡 <i>Tip: Put account numbers inside &lt;code&gt;1000123456789&lt;/code&gt; so members can copy them with 1 tap!</i>\n\n` +
-    `Reply with the new text or tap Cancel below:`,
+    `🏦 <b>Edit Church CBE Account — Step 1/2</b>\n\n` +
+    `• <b>Current Account Number:</b> <code>${curNum}</code>\n` +
+    `• <b>Current Account Name:</b> ${curName}\n\n` +
+    `Please enter the new <b>CBE Account Number</b> (digits only, e.g. <code>1000123456789</code>):`,
     {
       parse_mode: 'HTML',
       ...getCancelKeyboard(),

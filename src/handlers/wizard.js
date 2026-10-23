@@ -19,6 +19,7 @@ const {
   createPaymentSubmission,
   notifyStaffNewPaymentSubmission,
   setBankInfo,
+  setCbeAccountDetails,
 } = require('../services/accounting');
 const { parseMoneyToCents, formatMoney, getCurrentYearMonth, formatPaymentMethod, escapeHtml } = require('../utils/formatters');
 const { getPaymentMethodKeyboard, getCancelKeyboard, getCancelReplyKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
@@ -484,24 +485,64 @@ function registerWizardHandler(bot) {
     }
 
     // ----------------------------------------------------
-    // EDIT CHURCH BANK ACCOUNTS WIZARD
+    // EDIT CHURCH CBE ACCOUNT WIZARD (Number -> Name)
     // ----------------------------------------------------
-    if (session.step === 'ADMIN_SET_BANK_INFO') {
-      const cleanBankText = text.trim();
-      if (cleanBankText.length < 10) {
-        return ctx.reply('❌ Bank account details must be at least 10 characters long. Please try again or tap Cancel:', getCancelKeyboard());
+    if (session.step === 'ADMIN_SET_CBE_ACCOUNT_NUMBER') {
+      const cleanAcc = text.replace(/\s+/g, '').trim();
+      if (!/^\d{8,25}$/.test(cleanAcc)) {
+        return ctx.reply(
+          '❌ Invalid CBE Account Number. Please enter digits only (at least 8 numbers, e.g. 1000123456789) or tap Cancel:',
+          getCancelKeyboard()
+        );
       }
-      clearSession(userId);
-      setBankInfo(cleanBankText, userId);
+
+      setSession(userId, {
+        ...session,
+        step: 'ADMIN_SET_CBE_ACCOUNT_NAME',
+        newAccountNumber: cleanAcc,
+      });
+
       return ctx.reply(
-        `✅ <b>Church Contribution Accounts Updated Successfully!</b>\n\n` +
-        `Here is the new message members will see:\n\n` +
-        cleanBankText,
+        `👤 <b>Edit Church CBE Account — Step 2/2</b>\n\n` +
+        `• <b>New Account Number:</b> <code>${cleanAcc}</code>\n` +
+        `• <b>Current Account Name:</b> ${escapeHtml(session.currentAccountName || 'None')}\n\n` +
+        `Please enter the <b>Official Account Holder / Church Name</b>\n` +
+        `(e.g. <code>Natanim Fund / የናታኒም ፈንድ</code>):`,
         {
           parse_mode: 'HTML',
-          ...getMainMenuKeyboard(ctx.state?.role),
+          ...getCancelKeyboard(),
         }
       );
+    }
+
+    if (session.step === 'ADMIN_SET_CBE_ACCOUNT_NAME') {
+      const cleanName = sanitizeText(text, 100);
+      if (!cleanName || cleanName.length < 2) {
+        return ctx.reply('❌ Account Name must be at least 2 characters long. Please try again or tap Cancel:', getCancelKeyboard());
+      }
+
+      clearSession(userId);
+      try {
+        const updated = setCbeAccountDetails({
+          accountNumber: session.newAccountNumber,
+          accountName: cleanName,
+          actorTelegramId: userId,
+        });
+
+        return ctx.reply(
+          `✅ <b>Church CBE Account Successfully Updated!</b>\n\n` +
+          `• <b>Bank:</b> Commercial Bank of Ethiopia (CBE)\n` +
+          `• <b>Account Number:</b> <code>${escapeHtml(updated.accountNumber)}</code>\n` +
+          `• <b>Account Name:</b> ${escapeHtml(updated.accountName)}\n\n` +
+          `<i>All members will now see these updated account details when submitting receipts.</i>`,
+          {
+            parse_mode: 'HTML',
+            ...getMainMenuKeyboard(ctx.state?.role),
+          }
+        );
+      } catch (err) {
+        return ctx.reply(`❌ Could not update CBE account: ${err.message}`, getMainMenuKeyboard(ctx.state?.role));
+      }
     }
 
     // ----------------------------------------------------
