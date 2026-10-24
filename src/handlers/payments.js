@@ -22,7 +22,6 @@ const {
   formatDualDate,
 } = require('../utils/formatters');
 const { getPaymentMethodKeyboard, getCancelKeyboard, getConfirmationKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
-const { generatePaymentReceiptPdf } = require('../services/receiptService');
 
 function startPaymentWizard(ctx) {
   const members = getAllActiveMembers();
@@ -235,66 +234,35 @@ function registerPaymentHandlers(bot) {
         await ctx.reply(caption, { parse_mode: 'HTML' });
       }
 
-      // Send official digital receipt (PDF + summary) to member
+      // Send official digital receipt message to member
       try {
         const coveredList = monthsCovered.map(formatDualMonth).join(', ');
         const finalTxId = txId || payment.tx_id;
 
-        try {
-          const pdfBuffer = await generatePaymentReceiptPdf({
-            txId: finalTxId,
-            memberName: submission.full_name,
-            memberId: submission.member_id,
-            phone: submission.phone,
-            amountCents: submission.amount_cents,
-            currency,
-            paymentMethod: submission.payment_method,
-            referenceNumber: submission.reference_number,
-            monthsCovered,
-            status: 'FULLY_PAID',
-            verifiedBy: `Staff: ${staffName}`,
-          });
+        const receiptMsg =
+          `🕊️ <b>የአርባ ምንጭ ዩኒቨርሲቲ ክርስቲያን ተማሪዎች ናታኒም ፈንድ</b>\n` +
+          `<i>Arbaminch University Christian Students Natanim Fund</i>\n` +
+          `───────────────────────\n` +
+          `🎉 <b>ይፋዊ የክፍያ ማረጋገጫ ደረሰኝ / Official Receipt</b>\n\n` +
+          `ሰላም <b>${escapeHtml(submission.full_name)}</b>! ያቀረቡት መዋጮ በአስተዳደሩ ተረጋግጦ ይፋዊ ደረሰኝ ተመዝግቧል።\n\n` +
+          `🧾 <b>የደረሰኝ ዝርዝር (Receipt Details):</b>\n` +
+          `• <b>ደረሰኝ ቁጥር (TxID):</b> <code>${escapeHtml(finalTxId)}</code>\n` +
+          `• <b>የተከፈለው መጠን:</b> <b>${escapeHtml(formatMoney(submission.amount_cents, currency))}</b>\n` +
+          `• <b>የክፍያ ዘዴ:</b> ${escapeHtml(formatPaymentMethod(submission.payment_method))}\n` +
+          (submission.reference_number ? `• <b>ማመሳከሪያ (Ref):</b> <code>${escapeHtml(submission.reference_number)}</code>\n` : '') +
+          `• <b>የተሸፈኑ ወራት (${monthsCovered.length}):</b> <code>${escapeHtml(coveredList)}</code>\n` +
+          `• <b>ሁኔታ:</b> 🟢 ሙሉ በሙሉ ተከፍሏል (Fully Settled)\n\n` +
+          `«እግዚአብሔር በደስታ የሚሰጠውን ይወዳልና እያንዳንዱ በልቡ እንዳሰበ ይስጥ።» (2ኛ ቆሮንቶስ 9:7)\n` +
+          `እግዚአብሔር አብዝቶ ይባርክዎት! 🕊️`;
 
-          await ctx.telegram.sendDocument(
-            submission.telegram_id,
-            {
-              source: pdfBuffer,
-              filename: `Receipt_${finalTxId}.pdf`,
-            },
-            {
-              caption:
-                `🧾 <b>የክፍያ ማረጋገጫ ይፋዊ ደረሰኝ / Official Church Receipt</b>\n\n` +
-                `ሰላም <b>${escapeHtml(submission.full_name)}</b>! ያቀረቡት መዋጮ በቤተክርስቲያኑ አስተዳደር ተረጋግጦ ይፋዊ ደረሰኝ ተዘጋጅቷል።\n\n` +
-                `• <b>ደረሰኝ ቁጥር (TxID):</b> <code>${escapeHtml(finalTxId)}</code>\n` +
-                `• <b>የተከፈለው መጠን:</b> <b>${escapeHtml(formatMoney(submission.amount_cents, currency))}</b>\n` +
-                `• <b>የተሸፈኑ ወራት (${monthsCovered.length}):</b> <code>${escapeHtml(coveredList)}</code>\n` +
-                `• <b>ሁኔታ:</b> 🟢 ሙሉ በሙሉ ተከፍሏል (Fully Settled)\n\n` +
-                `እግዚአብሔር ይስጥልን! / May God bless your contribution! 🕊️\n` +
-                `<i>ይፋዊ የፒዲኤፍ (PDF) ደረሰኝዎን ከላይ ማውረድ ወይም ማስቀመጥ ይችላሉ።</i>`,
-              parse_mode: 'HTML',
-              ...getMainMenuKeyboard('member'),
-            }
-          );
-        } catch (pdfErr) {
-          console.warn('[Payment] Could not send PDF receipt, falling back to text:', pdfErr.message);
-          await ctx.telegram.sendMessage(
-            submission.telegram_id,
-            `🎉 <b>የክፍያ ማረጋገጫ ደረሰኝ / Official Payment Receipt!</b>\n\n` +
-            `ሰላም <b>${escapeHtml(submission.full_name)}</b>! ያቀረቡት መዋጮ በቤተክርስቲያኑ አስተዳደር ተረጋግጦ ተመዝግቧል።\n` +
-            `Your contribution has been verified by church leadership!\n\n` +
-            `🧾 <b>ደረሰኝ ዝርዝር / Official Payment Receipt:</b>\n` +
-            `• <b>Transaction ID:</b> <code>${escapeHtml(finalTxId)}</code>\n` +
-            `• <b>Total Amount Paid:</b> <b>${escapeHtml(formatMoney(submission.amount_cents, currency))}</b>\n` +
-            `• <b>Payment Method:</b> ${escapeHtml(formatPaymentMethod(submission.payment_method))}\n` +
-            `• <b>Covered Months (${monthsCovered.length}):</b> <code>${escapeHtml(coveredList)}</code>\n` +
-            `• <b>Status:</b> 🟢 Fully Paid for all covered periods!\n\n` +
-            `እግዚአብሔር ይስጥልን! / May God bless your generosity and continuous support! 🕊️`,
-            {
-              parse_mode: 'HTML',
-              ...getMainMenuKeyboard('member'),
-            }
-          );
-        }
+        await ctx.telegram.sendMessage(
+          submission.telegram_id,
+          receiptMsg,
+          {
+            parse_mode: 'HTML',
+            ...getMainMenuKeyboard('member'),
+          }
+        );
       } catch (notifyErr) {
         console.warn(`[Payment] Could not send receipt DM to member ${submission.telegram_id}:`, notifyErr.message);
       }
@@ -548,57 +516,26 @@ function registerPaymentHandlers(bot) {
 
       await ctx.editMessageText(text, { parse_mode: 'Markdown' });
 
-      // Notify the member privately with PDF receipt if registered on Telegram
+      // Notify the member privately with clean receipt message
       if (result.member && result.member.telegram_id) {
         try {
-          const pdfBuffer = await generatePaymentReceiptPdf({
-            txId: result.payment.tx_id,
-            memberName: result.member.full_name,
-            memberId: result.member.id,
-            phone: result.member.phone,
-            amountCents: result.payment.amount_cents,
-            currency,
-            paymentMethod: result.payment.payment_method,
-            referenceNumber: result.payment.reference_number,
-            monthsCovered: [result.obligation.year_month],
-            status: result.obligation.status,
-            verifiedBy: `Staff: ${ctx.from.first_name || 'Church Treasury'}`,
-          });
+          const receiptMsg =
+            `🕊️ <b>የአርባ ምንጭ ዩኒቨርሲቲ ክርስቲያን ተማሪዎች ናታኒም ፈንድ</b>\n` +
+            `<i>Arbaminch University Christian Students Natanim Fund</i>\n` +
+            `───────────────────────\n` +
+            `🎉 <b>ይፋዊ የክፍያ ማረጋገጫ ደረሰኝ / Official Receipt</b>\n\n` +
+            `ውድ <b>${escapeHtml(result.member.full_name)}</b>! ያበረከቱት ወርሃዊ መዋጮ በገንዘብ ያዥ ተረጋግጦ ተመዝግቧል።\n\n` +
+            `• <b>ደረሰኝ ቁጥር (TxID):</b> <code>${escapeHtml(result.payment.tx_id)}</code>\n` +
+            `• <b>መጠን:</b> <b>${escapeHtml(formatMoney(result.payment.amount_cents, currency))}</b>\n` +
+            `• <b>የመዋጮ ጊዜ:</b> <code>${escapeHtml(formatDualMonth(result.obligation.year_month))}</code>\n` +
+            `• <b>ዘዴ:</b> ${escapeHtml(formatPaymentMethod(result.payment.payment_method))}\n` +
+            (result.payment.reference_number ? `• <b>ማመሳከሪያ:</b> <code>${escapeHtml(result.payment.reference_number)}</code>\n` : '') +
+            `• <b>ሁኔታ:</b> 🟢 ${escapeHtml(result.obligation.status)}\n\n` +
+            `«እግዚአብሔር በደስታ የሚሰጠውን ይወዳል...» (2ኛ ቆሮንቶስ 9:7)\n` +
+            `በረከቱ ይደርስዎ! እግዚአብሔር ይባርክዎት! 🙏`;
 
-          await ctx.telegram.sendDocument(
-            result.member.telegram_id,
-            {
-              source: pdfBuffer,
-              filename: `Receipt_${result.payment.tx_id}.pdf`,
-            },
-            {
-              caption:
-                `🕊️ <b>የክፍያ ማረጋገጫ ይፋዊ ደረሰኝ / Official Church Receipt</b>\n\n` +
-                `ውድ <b>${escapeHtml(result.member.full_name)}</b>፣ ያበረከቱት ወርሃዊ መዋጮ በቤተክርስቲያኑ ገንዘብ ያዥ ተረጋግጦ ተመዝግቧል።\n\n` +
-                `• <b>ደረሰኝ ቁጥር (TxID):</b> <code>${escapeHtml(result.payment.tx_id)}</code>\n` +
-                `• <b>መጠን:</b> <b>${escapeHtml(formatMoney(result.payment.amount_cents, currency))}</b>\n` +
-                `• <b>የመዋጮ ጊዜ:</b> <code>${escapeHtml(formatDualMonth(result.obligation.year_month))}</code>\n` +
-                `• <b>ሁኔታ:</b> ${escapeHtml(result.obligation.status)}\n\n` +
-                `የእርስዎ ይፋዊ ዲጂታል ደረሰኝ ከላይ ተያይዟል። በረከቱ ይድረስዎ! 🙏`,
-              parse_mode: 'HTML',
-            }
-          );
-        } catch (pdfErr) {
-          console.warn('[Payment] Could not send PDF receipt in manual payment, falling back:', pdfErr.message);
-          try {
-            const memberPrivateMsg =
-              `🕊️ *Payment Verified Receipt*\n\n` +
-              `Dear ${result.member.full_name},\n` +
-              `Your contribution has been received and verified by the church team:\n\n` +
-              `• *Receipt ID:* \`${result.payment.tx_id}\`\n` +
-              `• *Amount:* ${formatMoney(result.payment.amount_cents, currency)}\n` +
-              `• *Period:* ${result.obligation.year_month}\n` +
-              `• *Status:* ${result.obligation.status}\n\n` +
-              `May God bless your giving! 🙏`;
-
-            await ctx.telegram.sendMessage(result.member.telegram_id, memberPrivateMsg, { parse_mode: 'Markdown' });
-          } catch (_) {}
-        }
+          await ctx.telegram.sendMessage(result.member.telegram_id, receiptMsg, { parse_mode: 'HTML' });
+        } catch (_) {}
       }
     } catch (err) {
       return ctx.reply(`❌ Payment recording failed: ${err.message}`);

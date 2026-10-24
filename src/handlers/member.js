@@ -9,8 +9,6 @@ const {
   getCurrency,
   getBankInfo,
 } = require('../services/accounting');
-const { getDatabase } = require('../db');
-const { generatePaymentReceiptPdf } = require('../services/receiptService');
 const { setSession } = require('../utils/session');
 const {
   formatMoney,
@@ -110,21 +108,7 @@ async function handleHistory(ctx) {
     }
   }
 
-  const dlButtons = [];
-  const validPayments = payments.filter((p) => p.is_reversed !== 1).slice(0, 3);
-  if (validPayments.length > 0) {
-    for (const p of validPayments) {
-      dlButtons.push([
-        Markup.button.callback(`🧾 ደረሰኝ (PDF) — ${p.year_month}`, `dl_receipt_${p.id}`),
-      ]);
-    }
-  }
-
-  if (dlButtons.length > 0) {
-    await ctx.reply(text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(dlButtons) });
-  } else {
-    await ctx.reply(text, { parse_mode: 'HTML' });
-  }
+  await ctx.reply(text, { parse_mode: 'HTML' });
 }
 
 async function startMemberPaymentSubmission(ctx) {
@@ -193,58 +177,6 @@ function registerMemberHandlers(bot) {
   bot.action('menu_submit_payment', requireActiveMember, async (ctx) => {
     await ctx.answerCbQuery();
     await startMemberPaymentSubmission(ctx);
-  });
-
-  bot.action(/^dl_receipt_(\d+)$/, async (ctx) => {
-    await ctx.answerCbQuery('ደረሰኝ በማዘጋጀት ላይ... / Generating PDF...');
-    const paymentId = parseInt(ctx.match[1], 10);
-    const db = getDatabase();
-    const payment = db.prepare(`
-      SELECT p.*, m.full_name, m.phone, m.telegram_id, o.year_month, o.status as obl_status
-      FROM payments p
-      JOIN members m ON p.member_id = m.id
-      JOIN obligations o ON p.obligation_id = o.id
-      WHERE p.id = ?
-    `).get(paymentId);
-
-    if (!payment) {
-      return ctx.reply('⚠️ ደረሰኝ አልተገኘም / Receipt not found.');
-    }
-
-    const userId = ctx.from.id;
-    const isOwner = String(payment.telegram_id) === String(userId);
-    const role = ctx.state?.role;
-    const isStaff = role === 'admin' || role === 'treasurer';
-    if (!isOwner && !isStaff) {
-      return ctx.reply('⛔ Unauthorized: You can only download your own receipts.');
-    }
-
-    const currency = getCurrency();
-    const pdfBuffer = await generatePaymentReceiptPdf({
-      txId: payment.tx_id,
-      memberName: payment.full_name,
-      memberId: payment.member_id,
-      phone: payment.phone,
-      amountCents: payment.amount_cents,
-      currency,
-      paymentMethod: payment.payment_method,
-      referenceNumber: payment.reference_number,
-      monthsCovered: [payment.year_month],
-      status: payment.obl_status || 'FULLY_PAID',
-      dateFormatted: formatDualDate(payment.created_at.slice(0, 10)),
-      verifiedBy: 'Church Treasury Office',
-    });
-
-    await ctx.replyWithDocument(
-      {
-        source: pdfBuffer,
-        filename: `Receipt_${payment.tx_id}.pdf`,
-      },
-      {
-        caption: `🧾 <b>ይፋዊ የክፍያ ማረጋገጫ ደረሰኝ / Official Church Receipt</b>\n• <b>TxID:</b> <code>${payment.tx_id}</code>\n• <b>መጠን:</b> <b>${formatMoney(payment.amount_cents, currency)}</b>`,
-        parse_mode: 'HTML',
-      }
-    );
   });
 }
 
