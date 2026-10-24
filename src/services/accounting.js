@@ -320,6 +320,11 @@ function recordMultiMonthPayment({
       const obligation = getOrCreateObligation(memberId, month);
       const neededForMonth = Math.max(0, obligation.amount_due_cents - obligation.amount_paid_cents);
 
+      // If this month is already fully settled and subsequent months need payment, advance forward
+      if (neededForMonth === 0 && remainingPool > 0 && i < months.length - 1) {
+        continue;
+      }
+
       let payForThisMonth = 0;
       if (i === months.length - 1) {
         payForThisMonth = remainingPool;
@@ -472,14 +477,30 @@ function listMemberPayments(memberId, limit = 15) {
   `).all(memberId, limit);
 }
 
-function getMemberOutstandingTotal(memberId) {
+function getMemberOutstandingTotal(memberId, upToMonth = null) {
   const db = getDatabase();
+  const cutoff = upToMonth || getCurrentYearMonth();
   const row = db.prepare(`
     SELECT COALESCE(SUM(amount_due_cents - amount_paid_cents), 0) AS total_outstanding
     FROM obligations
-    WHERE member_id = ? AND amount_paid_cents < amount_due_cents
-  `).get(memberId);
+    WHERE member_id = ? 
+      AND year_month <= ?
+      AND amount_paid_cents < amount_due_cents
+  `).get(memberId, cutoff);
   return row ? row.total_outstanding : 0;
+}
+
+function getMemberPrepaidMonths(memberId) {
+  const db = getDatabase();
+  const currentMonth = getCurrentYearMonth();
+  return db.prepare(`
+    SELECT year_month, amount_due_cents, amount_paid_cents, status
+    FROM obligations
+    WHERE member_id = ? 
+      AND year_month > ? 
+      AND status = 'FULLY_PAID'
+    ORDER BY year_month ASC
+  `).all(memberId, currentMonth);
 }
 
 function listUnpaidMembersForMonth(yearMonth) {
@@ -785,6 +806,7 @@ module.exports = {
   listMemberObligations,
   listMemberPayments,
   getMemberOutstandingTotal,
+  getMemberPrepaidMonths,
   listUnpaidMembersForMonth,
   getPaymentByTxId,
   createPaymentSubmission,

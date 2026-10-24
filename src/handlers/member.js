@@ -5,6 +5,7 @@ const {
   listMemberObligations,
   listMemberPayments,
   getMemberOutstandingTotal,
+  getMemberPrepaidMonths,
   getCurrency,
   getBankInfo,
 } = require('../services/accounting');
@@ -27,7 +28,8 @@ async function handleMyStatus(ctx) {
 
   const currentMonth = getCurrentYearMonth();
   const obligation = getOrCreateObligation(member.id, currentMonth);
-  const totalOutstanding = getMemberOutstandingTotal(member.id);
+  const totalOutstanding = getMemberOutstandingTotal(member.id, currentMonth);
+  const prepaidMonths = getMemberPrepaidMonths(member.id);
   const currency = getCurrency();
 
   const balanceCents = Math.max(0, obligation.amount_due_cents - obligation.amount_paid_cents);
@@ -42,7 +44,15 @@ async function handleMyStatus(ctx) {
   text += `⏰ <b>Due Date:</b> ${formatDualDate(obligation.due_date)}\n\n`;
 
   if (totalOutstanding > balanceCents) {
-    text += `⚠️ <b>ጠቅላላ ቀሪ ዕዳ / Total Unpaid (incl. prior months):</b> ${formatMoney(totalOutstanding, currency)}\n\n`;
+    const priorDues = totalOutstanding - balanceCents;
+    text += `⚠️ <b>ያለፈ ቀሪ ዕዳ / Prior Months Overdue:</b> ${formatMoney(priorDues, currency)}\n`;
+    text += `⚠️ <b>ጠቅላላ ቀሪ ዕዳ / Total Outstanding:</b> ${formatMoney(totalOutstanding, currency)}\n\n`;
+  }
+
+  if (prepaidMonths.length > 0) {
+    const latestPrepaid = prepaidMonths[prepaidMonths.length - 1];
+    text += `✨ <b>የቅድመ ክፍያ ሁኔታ / Advance Contributions:</b>\n`;
+    text += `• Fully paid in advance through <b>${formatDualMonth(latestPrepaid.year_month)}</b>! (${prepaidMonths.length} future month${prepaidMonths.length > 1 ? 's' : ''})\n\n`;
   }
 
   text += `💡 <b>Payment Instructions:</b>\n`;
