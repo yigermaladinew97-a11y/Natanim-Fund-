@@ -11,6 +11,9 @@ const {
   formatDualMonth,
   formatDualDate,
   getEthiopianToday,
+  isAcademicMonth,
+  getNextAcademicMonth,
+  getNextAcademicMonthsList,
 } = require('../src/utils/ethiopianDate');
 
 test('Ethiopian Calendar (ዓ.ም.) Conversion & Formatting Unit Tests', async (t) => {
@@ -72,5 +75,46 @@ test('Ethiopian Calendar (ዓ.ም.) Conversion & Formatting Unit Tests', async (
     assert.ok(today.month >= 1 && today.month <= 13);
     assert.ok(today.day >= 1 && today.day <= 30);
     assert.ok(today.formattedAm.includes('ዓ.ም.'));
+  });
+
+  await t.test('8. isAcademicMonth validates October to June (ጥቅምት እስከ ሰኔ) and excludes summer break', () => {
+    // 9 active academic campus months (October to June)
+    const academic = ['2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03', '2027-04', '2027-05', '2027-06'];
+    for (const m of academic) {
+      assert.strictEqual(isAcademicMonth(m), true, `Expected ${m} to be an academic month`);
+    }
+
+    // 3 summer vacation break months (July, August, September / ሐምሌ፣ ነሐሴ፣ መስከረም)
+    const vacation = ['2027-07', '2027-08', '2027-09'];
+    for (const m of vacation) {
+      assert.strictEqual(isAcademicMonth(m), false, `Expected ${m} to be a vacation month`);
+    }
+  });
+
+  await t.test('9. getNextAcademicMonth navigates across academic year skipping summer vacation', () => {
+    // Advancing from June (2026-06) jumps summer vacation straight to October (2026-10)
+    assert.strictEqual(getNextAcademicMonth('2026-06', 1), '2026-10');
+
+    // Regressing from October (2026-10) goes back to previous academic June (2026-06)
+    assert.strictEqual(getNextAcademicMonth('2026-10', -1), '2026-06');
+
+    // Regular consecutive months
+    assert.strictEqual(getNextAcademicMonth('2026-10', 1), '2026-11');
+    assert.strictEqual(getNextAcademicMonth('2026-12', 1), '2027-01');
+  });
+
+  await t.test('10. getNextAcademicMonthsList generates consecutive academic months', () => {
+    // Full 9-month university academic year
+    const fullYear = getNextAcademicMonthsList('2026-10', 9);
+    assert.strictEqual(fullYear.length, 9);
+    assert.deepStrictEqual(fullYear, [
+      '2026-10', '2026-11', '2026-12',
+      '2027-01', '2027-02', '2027-03',
+      '2027-04', '2027-05', '2027-06',
+    ]);
+
+    // Crossing summer vacation boundary (e.g. 3 months starting from May 2027)
+    const crossBreak = getNextAcademicMonthsList('2027-05', 3);
+    assert.deepStrictEqual(crossBreak, ['2027-05', '2027-06', '2027-10']);
   });
 });

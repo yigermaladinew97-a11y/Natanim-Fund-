@@ -166,8 +166,76 @@ function getEthiopianToday() {
   return toEthiopianDate(new Date());
 }
 
+/**
+ * Ethiopian University Academic Contribution Months:
+ * Students contribute from October (ጥቅምት) up to June (ሰኔ) — 9 campus months.
+ * Summer vacation months (No contribution required):
+ * - Hamle (11 / July)
+ * - Nehase (12 / August)
+ * - Pagume (13) & Meskerem (1 / September)
+ */
+const ACADEMIC_ETHIOPIAN_MONTH_IDS = [2, 3, 4, 5, 6, 7, 8, 9, 10];
+const ACADEMIC_GREGORIAN_MONTH_NUMS = [10, 11, 12, 1, 2, 3, 4, 5, 6];
+
+function isAcademicMonth(yearMonth) {
+  if (!yearMonth || typeof yearMonth !== 'string') return false;
+  const parts = yearMonth.split('-');
+  if (parts.length < 2) return false;
+  const monthNum = parseInt(parts[1], 10);
+  return ACADEMIC_GREGORIAN_MONTH_NUMS.includes(monthNum);
+}
+
+function getNextAcademicMonth(yearMonth, offset = 1) {
+  if (!yearMonth || typeof yearMonth !== 'string') return yearMonth;
+  const [yearStr, monthStr] = yearMonth.split('-');
+  let curYear = parseInt(yearStr, 10);
+  let curMonth = parseInt(monthStr, 10);
+
+  const step = offset >= 0 ? 1 : -1;
+  let remaining = Math.abs(offset);
+
+  while (remaining > 0) {
+    curMonth += step;
+    if (curMonth > 12) {
+      curMonth = 1;
+      curYear += 1;
+    } else if (curMonth < 1) {
+      curMonth = 12;
+      curYear -= 1;
+    }
+
+    if (ACADEMIC_GREGORIAN_MONTH_NUMS.includes(curMonth)) {
+      remaining--;
+    }
+  }
+
+  const mm = String(curMonth).padStart(2, '0');
+  return `${curYear}-${mm}`;
+}
+
+function getNextAcademicMonthsList(startYearMonth, count = 1) {
+  const list = [];
+  if (!startYearMonth) return list;
+  let current = startYearMonth;
+  if (!isAcademicMonth(current)) {
+    // If start is vacation, jump forward to next academic month
+    current = getNextAcademicMonth(current, 1);
+  }
+  list.push(current);
+  for (let i = 1; i < count; i++) {
+    current = getNextAcademicMonth(current, 1);
+    list.push(current);
+  }
+  return list;
+}
+
 module.exports = {
   ETHIOPIAN_MONTHS,
+  ACADEMIC_ETHIOPIAN_MONTH_IDS,
+  ACADEMIC_GREGORIAN_MONTH_NUMS,
+  isAcademicMonth,
+  getNextAcademicMonth,
+  getNextAcademicMonthsList,
   gregorianToJdn,
   jdnToEthiopian,
   ethiopianToJdn,

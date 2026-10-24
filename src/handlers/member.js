@@ -18,6 +18,8 @@ const {
   escapeHtml,
   formatDualMonth,
   formatDualDate,
+  isAcademicMonth,
+  getNextAcademicMonth,
 } = require('../utils/formatters');
 
 async function handleMyStatus(ctx) {
@@ -55,8 +57,12 @@ async function handleMyStatus(ctx) {
     text += `• Fully paid in advance through <b>${formatDualMonth(latestPrepaid.year_month)}</b>! (${prepaidMonths.length} future month${prepaidMonths.length > 1 ? 's' : ''})\n\n`;
   }
 
+  if (!isAcademicMonth(currentMonth)) {
+    text += `🏖️ <b>የክረምት ዕረፍት / Summer Break:</b> የአሁኑ ወር የክረምት ዕረፍት በመሆኑ ክፍያ አይጠየቅም። መዋጮ በጥቅምት ወር ይቀጥላል። (Contributions are only due October to June / ጥቅምት እስከ ሰኔ).\n\n`;
+  }
+
   text += `💡 <b>Payment Instructions:</b>\n`;
-  text += `• Transfer to official church CBE account\n`;
+  text += `• Transfer to official fellowship CBE account\n`;
   text += `• Tap the button below to upload your payment screenshot or receipt.\n`;
 
   const keyboard = Markup.inlineKeyboard([
@@ -118,10 +124,8 @@ async function startMemberPaymentSubmission(ctx) {
   }
 
   const curMonth = getCurrentYearMonth();
-  const [year, monthNum] = curMonth.split('-').map(Number);
-  const prevMonthNum = monthNum === 1 ? 12 : monthNum - 1;
-  const prevYear = monthNum === 1 ? year - 1 : year;
-  const prevMonth = `${prevYear}-${String(prevMonthNum).padStart(2, '0')}`;
+  const activeMonth = isAcademicMonth(curMonth) ? curMonth : getNextAcademicMonth(curMonth, 1);
+  const prevMonth = getNextAcademicMonth(activeMonth, -1);
 
   setSession(ctx.from.id, {
     step: 'MEMBER_SUBMIT_MONTH',
@@ -131,7 +135,7 @@ async function startMemberPaymentSubmission(ctx) {
 
   const buttons = [
     [
-      Markup.button.callback(`📅 ${formatDualMonth(curMonth)}`, `mem_sub_month_${curMonth}`),
+      Markup.button.callback(`📅 ${formatDualMonth(activeMonth)}`, `mem_sub_month_${activeMonth}`),
       Markup.button.callback(`📅 ${formatDualMonth(prevMonth)}`, `mem_sub_month_${prevMonth}`),
     ],
     [Markup.button.callback('❌ Cancel', 'action_cancel')],
@@ -143,6 +147,7 @@ async function startMemberPaymentSubmission(ctx) {
     `📤 <b>Submit Contribution Receipt — Step 1/4</b>\n\n` +
     `👤 <b>Member:</b> ${escapeHtml(member.full_name)} (#${member.id})\n\n` +
     `${cbeInfo}\n\n` +
+    `🎓 <i>Note: Fellowship contributions run from October (ጥቅምት) up to June (ሰኔ). Summer vacation months (July-Sept / ሐምሌ-መስከረም) are contribution-free.</i>\n\n` +
     `👇 <b>Select the starting period this payment covers:</b>\n` +
     `<i>(Or reply with another <code>YYYY-MM</code>)</i>`,
     {

@@ -2,7 +2,7 @@ const cron = require('node-cron');
 const { config } = require('../config');
 const { sendMonthlyReminders } = require('./reminders');
 const { ensureMonthlyObligations } = require('./accounting');
-const { getCurrentYearMonth } = require('../utils/formatters');
+const { getCurrentYearMonth, isAcademicMonth } = require('../utils/formatters');
 
 let reminderTask = null;
 let rolloverTask = null;
@@ -21,6 +21,10 @@ function initScheduler(bot) {
     rolloverTask = cron.schedule('5 0 1 * *', () => {
       try {
         const currentMonth = getCurrentYearMonth();
+        if (!isAcademicMonth(currentMonth)) {
+          console.log(`[Scheduler] Skipping obligation rollover for vacation month: ${currentMonth} (Academic active: Oct–Jun / ጥቅምት–ሰኔ)`);
+          return;
+        }
         console.log(`[Scheduler] Generating obligations for new month: ${currentMonth}`);
         const count = ensureMonthlyObligations(currentMonth);
         console.log(`[Scheduler] Created ${count} obligations for month ${currentMonth}`);
@@ -40,6 +44,10 @@ function initScheduler(bot) {
       reminderTask = cron.schedule(cronExpr, async () => {
         try {
           const currentMonth = getCurrentYearMonth();
+          if (!isAcademicMonth(currentMonth)) {
+            console.log(`[Scheduler] Skipping automated payment reminders for vacation month: ${currentMonth}`);
+            return;
+          }
           console.log(`[Scheduler] Executing scheduled monthly reminders for ${currentMonth}...`);
           const res = await sendMonthlyReminders({
             bot,

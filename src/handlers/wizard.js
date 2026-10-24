@@ -21,7 +21,16 @@ const {
   setBankInfo,
   setCbeAccountDetails,
 } = require('../services/accounting');
-const { parseMoneyToCents, formatMoney, getCurrentYearMonth, formatPaymentMethod, escapeHtml } = require('../utils/formatters');
+const {
+  parseMoneyToCents,
+  formatMoney,
+  getCurrentYearMonth,
+  formatPaymentMethod,
+  escapeHtml,
+  formatDualMonth,
+  isAcademicMonth,
+  getNextAcademicMonthsList,
+} = require('../utils/formatters');
 const { getPaymentMethodKeyboard, getCancelKeyboard, getCancelReplyKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
 const { showPaymentConfirmation } = require('./payments');
 const { assignRole } = require('../services/permissions');
@@ -121,12 +130,11 @@ function registerWizardHandler(bot) {
         Markup.button.callback('3 Months', 'mem_sub_cnt_3'),
       ],
       [
-        Markup.button.callback('4 Months', 'mem_sub_cnt_4'),
-        Markup.button.callback('5 Months', 'mem_sub_cnt_5'),
-        Markup.button.callback('6 Months', 'mem_sub_cnt_6'),
+        Markup.button.callback('4 Months (Semester)', 'mem_sub_cnt_4'),
+        Markup.button.callback('5 Months (Semester)', 'mem_sub_cnt_5'),
+        Markup.button.callback('🎓 9 Mo (Academic Year)', 'mem_sub_cnt_9'),
       ],
       [
-        Markup.button.callback('🗓️ 12 Months (1 Year)', 'mem_sub_cnt_12'),
         Markup.button.callback('❌ Cancel', 'action_cancel'),
       ],
     ];
@@ -149,15 +157,8 @@ function registerWizardHandler(bot) {
     const standardAmount = getStandardAmountCents();
     const currency = getCurrency();
 
-    let endMonth = startMonth;
-    let currentYm = startMonth;
-    for (let i = 1; i < count; i++) {
-      const [y, m] = currentYm.split('-').map(Number);
-      const nextM = m === 12 ? 1 : m + 1;
-      const nextY = m === 12 ? y + 1 : y;
-      currentYm = `${nextY}-${String(nextM).padStart(2, '0')}`;
-    }
-    endMonth = currentYm;
+    const academicMonths = getNextAcademicMonthsList(startMonth, count);
+    const endMonth = academicMonths[academicMonths.length - 1];
 
     let totalDue = 0;
     if (count === 1) {
@@ -167,7 +168,9 @@ function registerWizardHandler(bot) {
       totalDue = count * standardAmount;
     }
 
-    const periodDisplay = count === 1 ? startMonth : `${startMonth} to ${endMonth} (${count} Months)`;
+    const startDual = formatDualMonth(startMonth);
+    const endDual = formatDualMonth(endMonth);
+    const periodDisplay = count === 1 ? startDual : `${startDual} → ${endDual} (${count} Months)`;
 
     setSession(userId, {
       ...session,
@@ -413,6 +416,15 @@ function registerWizardHandler(bot) {
     if (session.step === 'MEMBER_SUBMIT_MONTH') {
       if (!isValidYearMonth(text)) {
         return ctx.reply('❌ Invalid period format. Please enter YYYY-MM (e.g. 2026-10) or tap Cancel:', getCancelReplyKeyboard());
+      }
+      if (!isAcademicMonth(text)) {
+        return ctx.reply(
+          '🏖️ *Summer Vacation Period:*\n' +
+          'Students only pay from *October (ጥቅምት)* up to *June (ሰኔ)*.\n' +
+          'Months like July, August, and September (ሐምሌ፣ ነሐሴ፣ መስከረም) are vacation months free of contribution.\n\n' +
+          'Please enter an academic month (e.g. `2026-10` for ጥቅምት) or tap Cancel:',
+          { parse_mode: 'Markdown', ...getCancelReplyKeyboard() }
+        );
       }
       return promptMemberForPaymentMonths(ctx, userId, session, text);
     }

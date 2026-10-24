@@ -47,11 +47,7 @@ function getNextMonth(yearMonth, offset = 1) {
 }
 
 function getNextMonthsList(startYearMonth, count = 1) {
-  const list = [];
-  for (let i = 0; i < count; i++) {
-    list.push(getNextMonth(startYearMonth, i));
-  }
-  return list;
+  return getNextAcademicMonthsList(startYearMonth, count);
 }
 
 function getDueDateForMonth(yearMonth, dueDay = 10) {
@@ -109,6 +105,9 @@ const {
   formatDualDate,
   toEthiopianDate,
   getEthiopianToday,
+  isAcademicMonth,
+  getNextAcademicMonth,
+  getNextAcademicMonthsList,
 } = require('./ethiopianDate');
 
 module.exports = {
@@ -117,6 +116,9 @@ module.exports = {
   getCurrentYearMonth,
   getNextMonth,
   getNextMonthsList,
+  getNextAcademicMonth,
+  getNextAcademicMonthsList,
+  isAcademicMonth,
   getDueDateForMonth,
   formatStatus,
   formatPaymentMethod,
