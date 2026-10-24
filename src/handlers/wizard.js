@@ -440,7 +440,6 @@ function registerWizardHandler(bot) {
       const methodButtons = [
         [Markup.button.callback('🏦 CBE Mobile / Bank Transfer', 'mem_sub_meth_bank_transfer')],
         [Markup.button.callback('📱 CBE Birr Transfer', 'mem_sub_meth_mobile_money')],
-        [Markup.button.callback('💵 Cash to Leader / Treasurer', 'mem_sub_meth_cash')],
         [Markup.button.callback('❌ Cancel', 'action_cancel')],
       ];
 
@@ -973,7 +972,6 @@ function registerWizardHandler(bot) {
     const methodButtons = [
       [Markup.button.callback('🏦 CBE Mobile / Bank Transfer', 'mem_sub_meth_bank_transfer')],
       [Markup.button.callback('📱 CBE Birr Transfer', 'mem_sub_meth_mobile_money')],
-      [Markup.button.callback('💵 Cash to Leader / Treasurer', 'mem_sub_meth_cash')],
       [Markup.button.callback('❌ Cancel', 'action_cancel')],
     ];
 

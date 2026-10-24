@@ -10,7 +10,7 @@ A reliable, secure, production-grade Telegram bot built with **Node.js**, **Tele
 - **Minor Currency Units**: Stored as integers in minor units (cents) to eliminate IEEE-754 floating-point rounding errors.
 - **Historical Immutability**: Each monthly obligation stores its own `amount_due_cents`. Changing the standard monthly contribution does not alter past obligations.
 - **Partial Payment Support**: Members can pay their monthly dues in multiple installments (Fully Paid, Partially Paid, Unpaid, Overdue).
-- **Payment Methods Supported**: Cash to Treasurer, CBE Bank Transfer (CBE Mobile Banking), and CBE Birr (Commercial Bank of Ethiopia screenshots only).
+- **Payment Methods Supported**: CBE Bank Transfer (CBE Mobile Banking) and CBE Birr (Commercial Bank of Ethiopia screenshots only).
 - **Audited Reversals**: Payments can be reversed by an administrator with a mandatory reason. Transactions are never silently deleted; a full audit trail is preserved.
 - **ACID Transactions**: Financial operations are wrapped in SQLite transactions.
 

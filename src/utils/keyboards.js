@@ -140,7 +140,6 @@ function getPaymentMethodKeyboard() {
       Markup.button.callback('📱 CBE Birr', 'paymethod_mobile_money'),
     ],
     [
-      Markup.button.callback('💵 Cash', 'paymethod_cash'),
       Markup.button.callback('❌ Cancel', 'action_cancel'),
     ],
   ]);

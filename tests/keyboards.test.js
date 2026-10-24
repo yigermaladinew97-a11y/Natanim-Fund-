@@ -66,6 +66,10 @@ test('Keyboards & Menu Button Utilities Tests', async (t) => {
   await t.test('5. Inline Keyboards (confirmation, payment method, pagination) remain functional', () => {
     const payMethodKb = getPaymentMethodKeyboard();
     assert.ok(payMethodKb.reply_markup.inline_keyboard);
+    const payButtons = payMethodKb.reply_markup.inline_keyboard.flat();
+    assert.strictEqual(payButtons.some(b => b.text.includes('Cash')), false);
+    assert.ok(payButtons.some(b => b.text.includes('CBE Transfer')));
+    assert.ok(payButtons.some(b => b.text.includes('CBE Birr')));
 
     const confirmKb = getConfirmationKeyboard('action_confirm');
     assert.ok(confirmKb.reply_markup.inline_keyboard);
