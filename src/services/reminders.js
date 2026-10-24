@@ -1,6 +1,12 @@
 const { getDatabase } = require('../db');
 const { config } = require('../config');
-const { formatMoney, getCurrentYearMonth, escapeHtml } = require('../utils/formatters');
+const {
+  formatMoney,
+  getCurrentYearMonth,
+  escapeHtml,
+  formatDualMonth,
+  formatDualDate,
+} = require('../utils/formatters');
 const { isValidTelegramId } = require('../utils/validators');
 const {
   listUnpaidMembersForMonth,
@@ -42,13 +48,13 @@ function buildReminderMessage({
 }) {
   let msg = `🔔 <b>የወርሃዊ መዋጮ ማስታወሻ / Monthly Contribution Reminder</b>\n\n`;
   msg += `ሰላም <b>${escapeHtml(fullName)}</b>! 🙏\n`;
-  msg += `ይህ የ <b>${month}</b> ወርሃዊ የቤተክርስቲያን ፈንድ መዋጮ ማስታወሻ ነው።\n`;
-  msg += `This is a friendly reminder regarding your church contribution for <b>${month}</b>.\n\n`;
+  msg += `ይህ የ <b>${formatDualMonth(month)}</b> ወርሃዊ የቤተክርስቲያን ፈንድ መዋጮ ማስታወሻ ነው።\n`;
+  msg += `This is a friendly reminder regarding your church contribution for <b>${formatDualMonth(month)}</b>.\n\n`;
   msg += `💰 <b>የዚህ ወር ቀሪ ክፍያ / Month Due:</b> <code>${balanceFormatted}</code>\n`;
   if (hasOlderDues && totalOutstandingFormatted) {
     msg += `⚠️ <b>ጠቅላላ ያለብዎት ዕዳ / Total Outstanding:</b> <code>${totalOutstandingFormatted}</code>\n`;
   }
-  msg += `⏰ <b>የመክፈያ ቀን / Due Date:</b> ${dueDate || 'ወሩ ከማለቁ በፊት'}\n\n`;
+  msg += `⏰ <b>የመክፈያ ቀን / Due Date:</b> ${formatDualDate(dueDate) || 'ወሩ ከማለቁ በፊት'}\n\n`;
   msg += `🏦 <b>የባንክ ሂሳብ መረጃ (CBE Account):</b>\n`;
   msg += `• <b>Bank:</b> Commercial Bank of Ethiopia (CBE)\n`;
   msg += `• <b>Account Number:</b> <code>${cbeAccountNum}</code>\n`;

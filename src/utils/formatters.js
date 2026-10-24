@@ -103,6 +103,13 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+const {
+  formatDualMonth,
+  formatDualDate,
+  toEthiopianDate,
+  getEthiopianToday,
+} = require('./ethiopianDate');
+
 module.exports = {
   formatMoney,
   parseMoneyToCents,
@@ -113,5 +120,9 @@ module.exports = {
   formatStatus,
   formatPaymentMethod,
   escapeHtml,
+  formatDualMonth,
+  formatDualDate,
+  toEthiopianDate,
+  getEthiopianToday,
 };
 

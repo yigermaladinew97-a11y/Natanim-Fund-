@@ -1,7 +1,7 @@
 const { Markup } = require('telegraf');
 const { getMainMenuKeyboard, getCancelReplyKeyboard } = require('../utils/keyboards');
 const { setSession, clearSession } = require('../utils/session');
-const { formatDate } = require('../utils/formatters');
+const { formatDate, formatDualMonth, getEthiopianToday, getCurrentYearMonth } = require('../utils/formatters');
 const { getPendingRequestByTelegramId } = require('../services/memberService');
 
 function formatHelpMessage(role, fullName, isPending = false) {
@@ -289,6 +289,28 @@ function registerStartHandlers(bot) {
     await ctx.answerCbQuery();
     await handleMyProfile(ctx);
   });
+
+  // ==========================================
+  // /calendar & /date - Ethiopian Calendar Info
+  // ==========================================
+  async function handleEthiopianCalendar(ctx) {
+    const today = getEthiopianToday();
+    const gregStr = new Date().toISOString().slice(0, 10);
+    const currentMonth = getCurrentYearMonth();
+
+    let text = `📅 <b>የኢትዮጵያ ቀን መቁጠሪያ / Ethiopian Calendar</b>\n\n`;
+    text += `• <b>ዛሬ / Today (ዓ.ም.):</b> <code>${today.formattedAm}</code>\n`;
+    text += `• <b>Today (E.C.):</b> <code>${today.formattedEn}</code>\n`;
+    text += `• <b>Gregorian Date:</b> <code>${gregStr}</code>\n`;
+    text += `• <b>Current Church Period:</b> <code>${formatDualMonth(currentMonth)}</code>\n\n`;
+    text += `💡 <i>ሁሉም የወርሃዊ መዋጮ ደረሰኞች፣ ሁኔታዎች እና ማስታወሻዎች በኢትዮጵያ እና በፈረንጅ ቀን መቁጠሪያ በአንድ ላይ ይቀርባሉ።</i>\n`;
+    text += `<i>(All monthly obligations, receipts, and reminders display both Ethiopian and Gregorian dates.)</i>`;
+
+    await ctx.reply(text, { parse_mode: 'HTML' });
+  }
+
+  bot.command('calendar', handleEthiopianCalendar);
+  bot.command('date', handleEthiopianCalendar);
 }
 
 module.exports = {

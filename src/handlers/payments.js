@@ -11,8 +11,16 @@ const {
   approvePaymentSubmission,
   rejectPaymentSubmission,
 } = require('../services/accounting');
-const { setSession, getSession, clearSession } = require('../utils/session');
-const { parseMoneyToCents, formatMoney, getCurrentYearMonth, formatPaymentMethod, formatStatus, escapeHtml } = require('../utils/formatters');
+const {
+  parseMoneyToCents,
+  formatMoney,
+  getCurrentYearMonth,
+  formatPaymentMethod,
+  formatStatus,
+  escapeHtml,
+  formatDualMonth,
+  formatDualDate,
+} = require('../utils/formatters');
 const { getPaymentMethodKeyboard, getCancelKeyboard, getConfirmationKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
 
 function startPaymentWizard(ctx) {
@@ -69,7 +77,7 @@ function registerPaymentHandlers(bot) {
 
     for (const sub of list) {
       const monthsCount = sub.months_count || 1;
-      let periodDisplay = sub.year_month;
+      let periodDisplay = formatDualMonth(sub.year_month);
       if (monthsCount > 1) {
         let currentYm = sub.year_month;
         for (let i = 1; i < monthsCount; i++) {
@@ -78,7 +86,7 @@ function registerPaymentHandlers(bot) {
           const nextY = m === 12 ? y + 1 : y;
           currentYm = `${nextY}-${String(nextM).padStart(2, '0')}`;
         }
-        periodDisplay = `${sub.year_month} to ${currentYm} (${monthsCount} Months)`;
+        periodDisplay = `${formatDualMonth(sub.year_month)} to ${formatDualMonth(currentYm)} (${monthsCount} Months)`;
       }
 
       const caption =
@@ -207,8 +215,8 @@ function registerPaymentHandlers(bot) {
       const currency = getCurrency();
 
       const coveredSummary = monthsCovered.length > 1
-        ? `${monthsCovered[0]} to ${monthsCovered[monthsCovered.length - 1]} (${monthsCovered.length} months)`
-        : monthsCovered[0];
+        ? `${formatDualMonth(monthsCovered[0])} to ${formatDualMonth(monthsCovered[monthsCovered.length - 1])} (${monthsCovered.length} months)`
+        : formatDualMonth(monthsCovered[0]);
 
       const caption =
         `✅ <b>Payment Verified & Approved!</b>\n\n` +
@@ -228,18 +236,19 @@ function registerPaymentHandlers(bot) {
 
       // Send official digital receipt to member
       try {
-        const coveredList = monthsCovered.join(', ');
+        const coveredList = monthsCovered.map(formatDualMonth).join(', ');
         await ctx.telegram.sendMessage(
           submission.telegram_id,
-          `🎉 <b>Payment Verified & Recorded!</b>\n\n` +
-          `Hello <b>${escapeHtml(submission.full_name)}</b>, your contribution has been verified by church leadership!\n\n` +
-          `🧾 <b>Official Payment Receipt:</b>\n` +
+          `🎉 <b>የክፍያ ማረጋገጫ ደረሰኝ / Official Payment Receipt!</b>\n\n` +
+          `ሰላም <b>${escapeHtml(submission.full_name)}</b>! ያቀረቡት መዋጮ በቤተክርስቲያኑ አስተዳደር ተረጋግጦ ተመዝግቧል።\n` +
+          `Your contribution has been verified by church leadership!\n\n` +
+          `🧾 <b>ደረሰኝ ዝርዝር / Official Payment Receipt:</b>\n` +
           `• <b>Transaction ID:</b> <code>${escapeHtml(txId || payment.tx_id)}</code>\n` +
           `• <b>Total Amount Paid:</b> <b>${escapeHtml(formatMoney(submission.amount_cents, currency))}</b>\n` +
           `• <b>Payment Method:</b> ${escapeHtml(formatPaymentMethod(submission.payment_method))}\n` +
           `• <b>Covered Months (${monthsCovered.length}):</b> <code>${escapeHtml(coveredList)}</code>\n` +
           `• <b>Status:</b> 🟢 Fully Paid for all covered periods!\n\n` +
-          `May God bless your generosity and continuous support for the church! 🕊️`,
+          `እግዚአብሔር ይስጥልን! / May God bless your generosity and continuous support! 🕊️`,
           {
             parse_mode: 'HTML',
             ...getMainMenuKeyboard('member'),

@@ -3,13 +3,21 @@ const { requireStaff, requireAdmin } = require('../middleware/auth');
 const { getMonthlyReportSummary, getMonthlyMemberDetails, exportMonthlyReportCsv } = require('../services/reporting');
 const { listActiveMembers } = require('../services/memberService');
 const { listUnpaidMembersForMonth, getCurrency } = require('../services/accounting');
-const { formatMoney, getCurrentYearMonth, formatStatus, formatPaymentMethod, escapeHtml } = require('../utils/formatters');
+const {
+  formatMoney,
+  getCurrentYearMonth,
+  formatStatus,
+  formatPaymentMethod,
+  escapeHtml,
+  formatDualMonth,
+  formatDualDate,
+} = require('../utils/formatters');
 const { isValidYearMonth } = require('../utils/validators');
 const { getPaginationKeyboard } = require('../utils/keyboards');
 
 function formatReportMessage(summary) {
   const currency = summary.currency;
-  let msg = `📑 *Monthly Financial Report — ${summary.yearMonth}*\n\n`;
+  let msg = `📑 <b>Monthly Financial Report — ${formatDualMonth(summary.yearMonth)}</b>\n\n`;
 
   msg += `👥 *Membership Statistics:*\n`;
   msg += `• Active Members: *${summary.activeMembersCount}*\n`;
@@ -77,16 +85,16 @@ function registerReportHandlers(bot) {
     const currency = getCurrency();
 
     const result = getMonthlyMemberDetails(month, page, 8);
-    let text = `👥 *Member Report — ${month} (Page ${result.page}/${result.totalPages})*\n\n`;
+    let text = `👥 <b>Member Report — ${formatDualMonth(month)} (Page ${result.page}/${result.totalPages})</b>\n\n`;
 
     if (result.rows.length === 0) {
-      text += `_No members recorded for this period._\n`;
+      text += `<i>No members recorded for this period.</i>\n`;
     } else {
       for (const r of result.rows) {
-        text += `• *${r.full_name}* (#${r.member_id}): ${formatStatus(r.status)}\n`;
+        text += `• <b>${escapeHtml(r.full_name)}</b> (#${r.member_id}): ${formatStatus(r.status)}\n`;
         text += `  Paid: ${formatMoney(r.amount_paid_cents, currency)} / Due: ${formatMoney(r.amount_due_cents, currency)}`;
         if (r.balance_cents > 0) {
-          text += ` | *Bal: ${formatMoney(r.balance_cents, currency)}*`;
+          text += ` | <b>Bal: ${formatMoney(r.balance_cents, currency)}</b>`;
         }
         text += `\n`;
       }
@@ -105,81 +113,53 @@ function registerReportHandlers(bot) {
     buttons.push([Markup.button.callback('🔙 Back to Summary', 'menu_report')]);
 
     try {
-      await ctx.editMessageText(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) });
+      await ctx.editMessageText(text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
     } catch (_) {
-      await ctx.reply(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) });
+      await ctx.reply(text, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
     }
   });
 
   // ==========================================
   // /unpaid - Outstanding Balances List
   // ==========================================
+  async function renderUnpaidList(ctx, month) {
+    const list = listUnpaidMembersForMonth(month);
+    const currency = getCurrency();
+
+    let text = `⏳ <b>የቀሪ ክፍያ ዝርዝር / Outstanding Balances — ${formatDualMonth(month)}</b>\n\n`;
+    if (list.length === 0) {
+      text += `🎉 <b>All members have fully settled their contributions for ${formatDualMonth(month)}!</b>`;
+    } else {
+      text += `Found <b>${list.length}</b> member(s) with outstanding balance:\n\n`;
+      for (const m of list) {
+        text += `• <b>${escapeHtml(m.full_name)}</b> (#${m.member_id})\n`;
+        text += `  Balance Due: <b>${formatMoney(m.balance_cents, currency)}</b> (Status: ${formatStatus(m.status)})\n`;
+        text += `  Phone: ${escapeHtml(m.phone) || 'N/A'} | Telegram: <code>${m.telegram_id}</code>\n\n`;
+      }
+      text += `<i>Use /remind to send them a private reminder.</i>`;
+    }
+
+    await ctx.reply(text, { parse_mode: 'HTML' });
+  }
+
   bot.command('unpaid', requireStaff, async (ctx) => {
     const parts = ctx.message.text.trim().split(/\s+/).slice(1);
     let month = getCurrentYearMonth();
     if (parts.length >= 1 && isValidYearMonth(parts[0])) {
       month = parts[0];
     }
-
-    const list = listUnpaidMembersForMonth(month);
-    const currency = getCurrency();
-
-    let text = `⏳ *Outstanding Balances — ${month}*\n\n`;
-    if (list.length === 0) {
-      text += `🎉 *All members have fully paid their contributions for ${month}!*`;
-    } else {
-      text += `Found *${list.length}* member(s) with outstanding balance:\n\n`;
-      for (const m of list) {
-        text += `• *${m.full_name}* (#${m.member_id})\n`;
-        text += `  Balance Due: *${formatMoney(m.balance_cents, currency)}* (Status: ${formatStatus(m.status)})\n`;
-        text += `  Phone: ${m.phone || 'N/A'} | Telegram: \`${m.telegram_id}\`\n\n`;
-      }
-      text += `_Use /remind to send them a private reminder._`;
-    }
-
-    await ctx.reply(text, { parse_mode: 'Markdown' });
+    await renderUnpaidList(ctx, month);
   });
 
   bot.hears(/^(?:⏳\s*)?Unpaid List$/i, requireStaff, async (ctx) => {
     const month = getCurrentYearMonth();
-    const list = listUnpaidMembersForMonth(month);
-    const currency = getCurrency();
-
-    let text = `⏳ *Outstanding Balances — ${month}*\n\n`;
-    if (list.length === 0) {
-      text += `🎉 *All members have fully paid their contributions for ${month}!*`;
-    } else {
-      text += `Found *${list.length}* member(s) with outstanding balance:\n\n`;
-      for (const m of list) {
-        text += `• *${m.full_name}* (#${m.member_id})\n`;
-        text += `  Balance Due: *${formatMoney(m.balance_cents, currency)}* (Status: ${formatStatus(m.status)})\n`;
-        text += `  Phone: ${m.phone || 'N/A'} | Telegram: \`${m.telegram_id}\`\n\n`;
-      }
-      text += `_Use /remind to send them a private reminder._`;
-    }
-    await ctx.reply(text, { parse_mode: 'Markdown' });
+    await renderUnpaidList(ctx, month);
   });
 
   bot.action('menu_unpaid', requireStaff, async (ctx) => {
     await ctx.answerCbQuery();
     const month = getCurrentYearMonth();
-    const list = listUnpaidMembersForMonth(month);
-    const currency = getCurrency();
-
-    let text = `⏳ *Outstanding Balances — ${month}*\n\n`;
-    if (list.length === 0) {
-      text += `🎉 *All members have fully paid their contributions for ${month}!*`;
-    } else {
-      text += `Found *${list.length}* member(s) with outstanding balance:\n\n`;
-      for (const m of list) {
-        text += `• *${m.full_name}* (#${m.member_id})\n`;
-        text += `  Balance Due: *${formatMoney(m.balance_cents, currency)}* (Status: ${formatStatus(m.status)})\n`;
-        text += `  Phone: ${m.phone || 'N/A'} | Telegram: \`${m.telegram_id}\`\n\n`;
-      }
-      text += `_Use /remind to send them a private reminder._`;
-    }
-
-    await ctx.reply(text, { parse_mode: 'Markdown' });
+    await renderUnpaidList(ctx, month);
   });
 
   // ==========================================
