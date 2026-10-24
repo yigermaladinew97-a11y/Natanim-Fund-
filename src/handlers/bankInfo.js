@@ -48,8 +48,8 @@ function registerBankInfoHandlers(bot) {
   bot.command('accounts', handleShowBankInfo);
   bot.command('setbankinfo', requireAdmin, startEditBankInfo);
 
-  bot.hears(/^(?:🏦\s*)?(?:Church\s+)?(?:Bank\s+)?Accounts(?: Details)?$/i, handleShowBankInfo);
-  bot.hears(/^(?:🏦\s*)?Edit (?:Church )?CBE Account$/i, requireAdmin, startEditBankInfo);
+  bot.hears(/^(?:🏦\s*)?(?:(?:Church\s+)?(?:Bank\s+)?Accounts(?: Details)?|የCBE ሂሳብ መረጃ)$/i, handleShowBankInfo);
+  bot.hears(/^(?:🏦\s*)?(?:Edit (?:Church )?CBE Account|የCBE ሂሳብ)$/i, requireAdmin, startEditBankInfo);
 
   bot.action('menu_bankinfo', async (ctx) => {
     await ctx.answerCbQuery();

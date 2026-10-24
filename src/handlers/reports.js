@@ -70,7 +70,7 @@ function registerReportHandlers(bot) {
   }
 
   bot.command('report', requireStaff, handleReport);
-  bot.hears(/^(?:📑\s*)?Monthly Report$/i, requireStaff, handleReport);
+  bot.hears(/^(?:📑\s*)?(?:Monthly Report|ወርሃዊ ሪፖርት)$/i, requireStaff, handleReport);
 
   bot.action('menu_report', requireStaff, async (ctx) => {
     await ctx.answerCbQuery();
@@ -151,7 +151,7 @@ function registerReportHandlers(bot) {
     await renderUnpaidList(ctx, month);
   });
 
-  bot.hears(/^(?:⏳\s*)?Unpaid List$/i, requireStaff, async (ctx) => {
+  bot.hears(/^(?:⏳\s*)?(?:Unpaid List|ያልከፈሉ አባላት)$/i, requireStaff, async (ctx) => {
     const month = getCurrentYearMonth();
     await renderUnpaidList(ctx, month);
   });
@@ -181,7 +181,7 @@ function registerReportHandlers(bot) {
   }
 
   bot.command('members', requireStaff, handleMembers);
-  bot.hears(/^(?:👥\s*)?Members List$/i, requireStaff, handleMembers);
+  bot.hears(/^(?:👥\s*)?(?:Members List|የአባላት ዝርዝር)$/i, requireStaff, handleMembers);
 
   bot.action(/^members_page_(\d+)$/, requireStaff, async (ctx) => {
     await ctx.answerCbQuery();
@@ -249,7 +249,7 @@ function registerReportHandlers(bot) {
   }
 
   bot.command('export', requireAdmin, async (ctx) => handleExportCsv(ctx));
-  bot.hears(/^(?:📁\s*)?Export CSV$/i, requireAdmin, async (ctx) => handleExportCsv(ctx));
+  bot.hears(/^(?:📁\s*)?(?:Export CSV|CSV ኤክስፖርት)$/i, requireAdmin, async (ctx) => handleExportCsv(ctx));
 
   bot.action('menu_export_csv', requireAdmin, async (ctx) => {
     await ctx.answerCbQuery();

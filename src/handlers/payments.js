@@ -122,7 +122,7 @@ function registerPaymentHandlers(bot) {
 
   bot.command('submissions', requireStaff, handleSubmissionsList);
   bot.command('verify', requireStaff, handleSubmissionsList);
-  bot.hears(/^(?:💳\s*)?Verify Receipts$/i, requireStaff, handleSubmissionsList);
+  bot.hears(/^(?:💳\s*)?(?:Verify Receipts|ደረሰኝ አረጋግጥ)$/i, requireStaff, handleSubmissionsList);
   bot.action('menu_submissions', requireStaff, async (ctx) => {
     await ctx.answerCbQuery();
     await handleSubmissionsList(ctx);
@@ -304,7 +304,7 @@ function registerPaymentHandlers(bot) {
     startPaymentWizard(ctx);
   });
 
-  bot.hears(/^(?:💰\s*)?Record Payment$/i, requireStaff, async (ctx) => {
+  bot.hears(/^(?:💰\s*)?(?:Record Payment|ክፍያ መዝግብ)$/i, requireStaff, async (ctx) => {
     startPaymentWizard(ctx);
   });
 

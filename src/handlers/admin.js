@@ -59,7 +59,7 @@ function registerAdminHandlers(bot) {
   }
 
   bot.command('approvals', requireAdmin, handlePendingApprovals);
-  bot.hears(/^(?:📥\s*)?Pending Approvals$/i, requireAdmin, handlePendingApprovals);
+  bot.hears(/^(?:📥\s*)?(?:Pending Approvals|ማጽደቂያዎች)$/i, requireAdmin, handlePendingApprovals);
   bot.action('menu_approvals', requireAdmin, async (ctx) => {
     await ctx.answerCbQuery();
     await handlePendingApprovals(ctx);
@@ -195,7 +195,7 @@ function registerAdminHandlers(bot) {
     );
   });
 
-  bot.hears(/^(?:➕\s*)?Add Member$/i, requireAdmin, async (ctx) => {
+  bot.hears(/^(?:➕\s*)?(?:Add Member|አባል መዝግብ)$/i, requireAdmin, async (ctx) => {
     setSession(ctx.from.id, { step: 'ADDMEMBER_WAIT_NAME' });
     await ctx.reply(
       '👤 *Register New Member — Step 1/3*\n\n' +
@@ -293,7 +293,7 @@ function registerAdminHandlers(bot) {
     await ctx.reply('Select the member you wish to deactivate:', Markup.inlineKeyboard(buttons));
   });
 
-  bot.hears(/^(?:🛑\s*)?Deactivate Member$/i, requireAdmin, async (ctx) => {
+  bot.hears(/^(?:🛑\s*)?(?:Deactivate Member|አባል አግድ)$/i, requireAdmin, async (ctx) => {
     const active = getAllActiveMembers();
     if (active.length === 0) {
       return ctx.reply('No active members found to deactivate.');
@@ -359,7 +359,7 @@ function registerAdminHandlers(bot) {
     );
   });
 
-  bot.hears(/^(?:⚙️\s*)?Set Standard Amount$/i, requireAdmin, async (ctx) => {
+  bot.hears(/^(?:⚙️\s*)?(?:Set Standard Amount|መዋጮ መጠን)$/i, requireAdmin, async (ctx) => {
     const currency = getCurrency();
     const currentCents = getStandardAmountCents();
     setSession(ctx.from.id, { step: 'SETAMOUNT_WAIT_VALUE' });
@@ -491,7 +491,7 @@ function registerAdminHandlers(bot) {
     return ctx.reply(msg, { parse_mode: 'HTML', ...keyboard });
   });
 
-  bot.hears(/^(?:🛡️\s*)?Manage Roles$/i, requireAdmin, async (ctx) => {
+  bot.hears(/^(?:🛡️\s*)?(?:Manage Roles|ሚናዎች)$/i, requireAdmin, async (ctx) => {
     const { text: msg, keyboard } = getRolesView();
     await ctx.reply(msg, { parse_mode: 'HTML', ...keyboard });
   });
@@ -580,7 +580,7 @@ function registerAdminHandlers(bot) {
     );
   });
 
-  bot.hears(/^(?:🔄\s*)?Reverse Payment$/i, requireAdmin, async (ctx) => {
+  bot.hears(/^(?:🔄\s*)?(?:Reverse Payment|ክፍያ መልስ)$/i, requireAdmin, async (ctx) => {
     setSession(ctx.from.id, { step: 'REVERSE_WAIT_TXID' });
     await ctx.reply(
       `🔄 *Payment Reversal*\n\n` +
@@ -644,7 +644,7 @@ function registerAdminHandlers(bot) {
     await ctx.reply(formatAuditTrailMessage(), { parse_mode: 'HTML' });
   });
 
-  bot.hears(/^(?:🔍\s*)?Audit Log$/i, requireAdmin, async (ctx) => {
+  bot.hears(/^(?:🔍\s*)?(?:Audit Log|ኦዲት መዝገብ)$/i, requireAdmin, async (ctx) => {
     await ctx.reply(formatAuditTrailMessage(), { parse_mode: 'HTML' });
   });
 

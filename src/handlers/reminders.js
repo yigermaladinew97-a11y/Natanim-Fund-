@@ -44,7 +44,7 @@ function registerReminderHandlers(bot) {
 
   bot.command('remind', requireStaff, handleRemindPrompt);
   bot.command('send_reminders', requireStaff, handleRemindPrompt);
-  bot.hears(/^(?:📨\s*)?Send Reminders$/i, requireStaff, handleRemindPrompt);
+  bot.hears(/^(?:📨\s*)?(?:Send Reminders|ማስታወሻ ላክ)$/i, requireStaff, handleRemindPrompt);
 
   bot.action('menu_remind', requireStaff, async (ctx) => {
     await ctx.answerCbQuery();

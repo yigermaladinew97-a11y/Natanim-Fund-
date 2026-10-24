@@ -1,4 +1,5 @@
 const { getUserRole, getMemberByTelegramId } = require('../services/permissions');
+const { getUserLanguage } = require('../services/i18n');
 
 function attachAuthContext(ctx, next) {
   const userId = ctx.from ? String(ctx.from.id) : null;
@@ -6,6 +7,7 @@ function attachAuthContext(ctx, next) {
 
   const role = getUserRole(userId);
   const member = getMemberByTelegramId(userId);
+  const language = getUserLanguage(userId);
 
   ctx.state = ctx.state || {};
   ctx.state.userId = userId;
@@ -15,6 +17,7 @@ function attachAuthContext(ctx, next) {
   ctx.state.isStaff = role === 'admin' || role === 'treasurer';
   ctx.state.member = member;
   ctx.state.isActiveMember = member && member.status === 'active';
+  ctx.state.language = language;
 
   return next();
 }

@@ -135,6 +135,13 @@ CREATE TABLE IF NOT EXISTS payment_submissions (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- User interface preferences (language selection)
+CREATE TABLE IF NOT EXISTS user_preferences (
+  telegram_id TEXT PRIMARY KEY,
+  language TEXT NOT NULL DEFAULT 'am' CHECK(language IN ('am', 'en')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Performance and Integrity Indexes
 CREATE INDEX IF NOT EXISTS idx_members_telegram_id ON members(telegram_id);
 CREATE INDEX IF NOT EXISTS idx_members_status ON members(status);

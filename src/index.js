@@ -64,6 +64,7 @@ async function main() {
         { command: 'submitpayment', description: 'Upload payment receipt / screenshot' },
         { command: 'history', description: 'View payment & obligation history' },
         { command: 'myprofile', description: 'View church member profile' },
+        { command: 'language', description: 'Switch language / ቋንቋ ይምረጡ (አማርኛ / English)' },
         { command: 'submissions', description: 'Review submitted payment receipts (Staff)' },
         { command: 'paid', description: 'Record verified payment manually (Staff)' },
         { command: 'report', description: 'View monthly financial report (Staff)' },

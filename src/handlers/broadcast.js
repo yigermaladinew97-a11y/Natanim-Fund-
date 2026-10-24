@@ -34,7 +34,7 @@ async function startBroadcastWizard(ctx) {
 function registerBroadcastHandlers(bot) {
   bot.command('broadcast', requireAdmin, startBroadcastWizard);
   bot.command('announce', requireAdmin, startBroadcastWizard);
-  bot.hears(/^(?:📢\s*)?Broadcast (?:Message|Announcement)$/i, requireAdmin, startBroadcastWizard);
+  bot.hears(/^(?:📢\s*)?(?:Broadcast (?:Message|Announcement)|መልእክት አሰራጭ)$/i, requireAdmin, startBroadcastWizard);
 
   bot.action('menu_broadcast', requireAdmin, async (ctx) => {
     await ctx.answerCbQuery();

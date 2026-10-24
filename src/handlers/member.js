@@ -154,14 +154,14 @@ async function startMemberPaymentSubmission(ctx) {
 
 function registerMemberHandlers(bot) {
   bot.command('mystatus', requireActiveMember, handleMyStatus);
-  bot.hears(/^(?:📊\s*)?My Status$/i, requireActiveMember, handleMyStatus);
+  bot.hears(/^(?:📊\s*)?(?:My Status|ሁኔታዬ)$/i, requireActiveMember, handleMyStatus);
   bot.action('menu_mystatus', requireActiveMember, async (ctx) => {
     await ctx.answerCbQuery();
     await handleMyStatus(ctx);
   });
 
   bot.command('history', requireActiveMember, handleHistory);
-  bot.hears(/^(?:📜\s*)?My History$/i, requireActiveMember, handleHistory);
+  bot.hears(/^(?:📜\s*)?(?:My History|ታሪኬ)$/i, requireActiveMember, handleHistory);
   bot.action('menu_history', requireActiveMember, async (ctx) => {
     await ctx.answerCbQuery();
     await handleHistory(ctx);
@@ -169,7 +169,7 @@ function registerMemberHandlers(bot) {
 
   bot.command('submitpayment', requireActiveMember, startMemberPaymentSubmission);
   bot.command('payproof', requireActiveMember, startMemberPaymentSubmission);
-  bot.hears(/^(?:📤\s*)?Submit (?:Payment )?Receipt$/i, requireActiveMember, startMemberPaymentSubmission);
+  bot.hears(/^(?:📤\s*)?(?:Submit (?:Payment )?Receipt|ደረሰኝ ላክ)$/i, requireActiveMember, startMemberPaymentSubmission);
   bot.action('start_payment_submission', requireActiveMember, async (ctx) => {
     await ctx.answerCbQuery();
     await startMemberPaymentSubmission(ctx);
