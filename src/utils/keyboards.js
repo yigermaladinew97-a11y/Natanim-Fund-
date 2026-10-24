@@ -136,11 +136,11 @@ function getMainMenuInlineKeyboard(role, lang = 'en') {
 function getPaymentMethodKeyboard() {
   return Markup.inlineKeyboard([
     [
-      Markup.button.callback('💵 Cash', 'paymethod_cash'),
-      Markup.button.callback('🏦 Bank Transfer', 'paymethod_bank_transfer'),
+      Markup.button.callback('🏦 CBE Transfer', 'paymethod_bank_transfer'),
+      Markup.button.callback('📱 CBE Birr', 'paymethod_mobile_money'),
     ],
     [
-      Markup.button.callback('📱 Mobile Money', 'paymethod_mobile_money'),
+      Markup.button.callback('💵 Cash', 'paymethod_cash'),
       Markup.button.callback('❌ Cancel', 'action_cancel'),
     ],
   ]);

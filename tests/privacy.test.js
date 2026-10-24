@@ -51,7 +51,7 @@ test('Cross-Member Privacy & Data Isolation Tests', async (t) => {
     yearMonth: month,
     amountCents: 15000,
     paymentMethod: 'mobile_money',
-    referenceNumber: 'BOB-TELEBIRR-01',
+    referenceNumber: 'BOB-CBE-01',
     recordedBy: '1000',
   });
 
@@ -65,7 +65,7 @@ test('Cross-Member Privacy & Data Isolation Tests', async (t) => {
 
     assert.strictEqual(bobPayments.length, 1);
     assert.strictEqual(bobPayments[0].member_id, bob.id);
-    assert.strictEqual(bobPayments[0].reference_number, 'BOB-TELEBIRR-01');
+    assert.strictEqual(bobPayments[0].reference_number, 'BOB-CBE-01');
 
     // Alice payments must not contain Bob's transactions
     assert.strictEqual(alicePayments.some(p => p.member_id === bob.id), false);

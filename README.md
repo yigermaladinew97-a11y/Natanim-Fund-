@@ -1,6 +1,6 @@
-# 🕊️ Natanim Fund — Church Monthly Contribution Telegram Bot
+# 🕊️ Arbaminch University Christian Students Natanim Fund Telegram Bot
 
-A reliable, secure, production-grade Telegram bot built with **Node.js**, **Telegraf**, and **SQLite (better-sqlite3)**. Designed specifically for church and community team leaders to manage monthly financial contributions from 31–100 members, track unpaid balances, send polite private reminders, and generate auditable financial reports.
+A reliable, secure, production-grade Telegram bot built with **Node.js**, **Telegraf**, and **SQLite (better-sqlite3)**. Designed specifically for Arbaminch University Christian Students (Pente / Evangelical fellowship) to manage monthly Natanim fund contributions, track unpaid balances, send polite private reminders, and generate auditable financial reports.
 
 ---
 
@@ -10,7 +10,7 @@ A reliable, secure, production-grade Telegram bot built with **Node.js**, **Tele
 - **Minor Currency Units**: Stored as integers in minor units (cents) to eliminate IEEE-754 floating-point rounding errors.
 - **Historical Immutability**: Each monthly obligation stores its own `amount_due_cents`. Changing the standard monthly contribution does not alter past obligations.
 - **Partial Payment Support**: Members can pay their monthly dues in multiple installments (Fully Paid, Partially Paid, Unpaid, Overdue).
-- **Payment Methods Supported**: Cash, Bank Transfer (e.g. CBE, Awash), and Mobile Money (e.g. Telebirr, CBE Birr).
+- **Payment Methods Supported**: Cash to Treasurer, CBE Bank Transfer (CBE Mobile Banking), and CBE Birr (Commercial Bank of Ethiopia screenshots only).
 - **Audited Reversals**: Payments can be reversed by an administrator with a mandatory reason. Transactions are never silently deleted; a full audit trail is preserved.
 - **ACID Transactions**: Financial operations are wrapped in SQLite transactions.
 

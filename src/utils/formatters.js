@@ -85,11 +85,12 @@ function formatPaymentMethod(method) {
     case 'cash':
       return '💵 Cash';
     case 'bank_transfer':
-      return '🏦 Bank Transfer';
+      return '🏦 CBE Transfer';
     case 'mobile_money':
-      return '📱 Mobile Money';
+    case 'cbe_birr':
+      return '📱 CBE Birr';
     default:
-      return method || 'Unknown';
+      return method || 'CBE';
   }
 }
 

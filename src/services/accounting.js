@@ -78,7 +78,7 @@ function getBankInfo() {
   const accName = getCbeAccountName();
 
   return (
-    `🏦 <b>Natanim Church Official CBE Account</b>\n\n` +
+    `🏦 <b>Arbaminch University Christian Students Natanim Fund — CBE Account</b>\n\n` +
     `• <b>Bank:</b> Commercial Bank of Ethiopia (CBE)\n` +
     `• <b>Account Number:</b> <code>${accNum}</code>\n` +
     `• <b>Account Name:</b> ${accName}\n\n` +

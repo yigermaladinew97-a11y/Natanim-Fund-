@@ -49,7 +49,7 @@ test('Payment Screenshot Submission & Staff Verification Workflow Tests', async 
       referenceNumber: 'CBE-12345678',
       fileId: 'AgACAgIAAxkBAAIFZ2...sample_photo_file_id',
       fileUniqueId: 'AQADsample_unique',
-      caption: 'Telebirr transfer confirmation',
+      caption: 'CBE Birr transfer confirmation',
     });
 
     assert.ok(sub);

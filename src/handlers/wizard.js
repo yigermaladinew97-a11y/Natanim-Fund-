@@ -438,8 +438,8 @@ function registerWizardHandler(bot) {
       });
 
       const methodButtons = [
-        [Markup.button.callback('🏦 Bank Transfer (CBE, Awash...)', 'mem_sub_meth_bank_transfer')],
-        [Markup.button.callback('📱 Mobile Money (Telebirr, CBE Birr)', 'mem_sub_meth_mobile_money')],
+        [Markup.button.callback('🏦 CBE Mobile / Bank Transfer', 'mem_sub_meth_bank_transfer')],
+        [Markup.button.callback('📱 CBE Birr Transfer', 'mem_sub_meth_mobile_money')],
         [Markup.button.callback('💵 Cash to Leader / Treasurer', 'mem_sub_meth_cash')],
         [Markup.button.callback('❌ Cancel', 'action_cancel')],
       ];
@@ -458,8 +458,8 @@ function registerWizardHandler(bot) {
 
     if (session.step === 'MEMBER_SUBMIT_WAIT_PHOTO') {
       return ctx.reply(
-        '📸 *Please send your payment screenshot or receipt as a photo or image file* (not plain text).\n\n' +
-        'Tap the attachment icon 📎 or photo gallery icon and select your receipt photo, or tap Cancel below:',
+        '📸 *Please send your CBE payment screenshot or deposit receipt as a photo or image file* (not plain text).\n\n' +
+        'Tap the attachment icon 📎 or photo gallery icon and select your CBE receipt photo, or tap Cancel below:',
         getCancelReplyKeyboard()
       );
     }
@@ -971,8 +971,8 @@ function registerWizardHandler(bot) {
     });
 
     const methodButtons = [
-      [Markup.button.callback('🏦 Bank Transfer (CBE, Awash...)', 'mem_sub_meth_bank_transfer')],
-      [Markup.button.callback('📱 Mobile Money (Telebirr, CBE Birr)', 'mem_sub_meth_mobile_money')],
+      [Markup.button.callback('🏦 CBE Mobile / Bank Transfer', 'mem_sub_meth_bank_transfer')],
+      [Markup.button.callback('📱 CBE Birr Transfer', 'mem_sub_meth_mobile_money')],
       [Markup.button.callback('💵 Cash to Leader / Treasurer', 'mem_sub_meth_cash')],
       [Markup.button.callback('❌ Cancel', 'action_cancel')],
     ];
@@ -1012,8 +1012,8 @@ function registerWizardHandler(bot) {
       `• *Months Covered:* ${session.monthsCount || 1} Month${(session.monthsCount || 1) > 1 ? 's' : ''}\n` +
       `• *Amount:* ${formatMoney(session.amountCents, currency)}\n` +
       `• *Method:* ${formatPaymentMethod(paymentMethod)}\n\n` +
-      `📸 *Please send your payment screenshot or receipt photo now:*\n` +
-      `_(Take a screenshot of your Telebirr / CBE confirmation SMS or receipt and send it as a photo. You can include your transaction reference in the photo caption)_`,
+      `📸 *Please send your CBE payment screenshot or receipt photo now:*\n` +
+      `_(Take a screenshot of your CBE Mobile Banking or CBE Birr confirmation and send it as a photo. You can include your CBE reference number in the photo caption)_`,
       {
         parse_mode: 'Markdown',
         ...getCancelReplyKeyboard(),
