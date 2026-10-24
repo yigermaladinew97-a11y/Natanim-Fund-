@@ -107,6 +107,9 @@ async function handleHistory(ctx) {
         const paidDate = p.created_at.slice(0, 10);
         text += `• <b>${p.tx_id}</b> — ${formatMoney(p.amount_cents, currency)} via ${formatPaymentMethod(p.payment_method)} on ${formatDualDate(paidDate)}${ref}\n`;
       }
+    }
+  }
+
   const dlButtons = [];
   const validPayments = payments.filter((p) => p.is_reversed !== 1).slice(0, 3);
   if (validPayments.length > 0) {
