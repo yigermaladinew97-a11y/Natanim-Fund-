@@ -2,7 +2,7 @@
  * Ethiopian Calendar (ዓ.ም.) Conversion and Formatting Utilities
  *
  * Implements precise mathematical conversion between the Gregorian Calendar
- * and the Ethiopian Orthodox / Ge'ez Calendar (12 months of 30 days + Pagume of 5/6 days).
+ * and the Ethiopian / Ge'ez Calendar (12 months of 30 days + Pagume of 5/6 days).
  */
 
 const ETHIOPIAN_MONTHS = [

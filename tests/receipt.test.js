@@ -15,7 +15,7 @@ test('Digital PDF Church Contribution Receipt Tests', async (suite) => {
       referenceNumber: 'FT26298AB12C',
       monthsCovered: ['2026-10'],
       status: 'FULLY_PAID',
-      verifiedBy: 'Staff Deacon Thomas',
+      verifiedBy: 'Staff Brother Thomas',
     });
 
     assert.ok(Buffer.isBuffer(pdfBuffer));

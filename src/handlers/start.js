@@ -195,7 +195,7 @@ function registerStartHandlers(bot) {
 
     setSession(userId, { step: 'SELF_REGISTER_WAIT_NAME' });
     const prompt = isAm
-      ? `📝 *የአባልነት ምዝገባ — ደረጃ 1/2*\n\nእንኳን ደህና መጡ! እባክዎ *ሙሉ ስምዎን* ያስገቡ (ለምሳሌ \`ዲያቆን ዳንኤል በቀለ\`):`
+      ? `📝 *የአባልነት ምዝገባ — ደረጃ 1/2*\n\nእንኳን ደህና መጡ! እባክዎ *ሙሉ ስምዎን* ያስገቡ (ለምሳሌ \`ወንድም ዳንኤል በቀለ\`):`
       : `📝 *Church Member Registration — Step 1/2*\n\nWelcome! Please enter your *Full Name* (e.g. \`Brother Daniel Bekele\`):`;
     await ctx.reply(prompt, {
       parse_mode: 'Markdown',

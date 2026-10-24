@@ -82,15 +82,15 @@ function generatePaymentReceiptPdf(data) {
       let y = margin + 8;
 
       // Church Cross & Title
-      doc.fontSize(20).fillColor('#C59B27').text('✟', { align: 'center' });
+      doc.fontSize(20).fillColor('#C59B27').text('✝', { align: 'center' });
       y += 18;
 
       doc.fontSize(14).fillColor('#1B365D')
-        .text('ናታኒም የኢትዮጵያ ኦርቶዶክስ ተዋሕዶ ቤተክርስቲያን ፈንድ', { align: 'center' });
+        .text('ናታኒም የወንጌላውያን አማኞች ቤተክርስቲያን ፈንድ', { align: 'center' });
       y += 18;
 
       doc.fontSize(10.5).fillColor('#4A5568')
-        .text('NATANIM ETHIOPIAN CHURCH MONTHLY CONTRIBUTION FUND', { align: 'center' });
+        .text('NATANIM EVANGELICAL CHURCH MONTHLY CONTRIBUTION FUND', { align: 'center' });
       y += 15;
 
       doc.fontSize(11).fillColor('#975A16')
@@ -233,14 +233,14 @@ function generatePaymentReceiptPdf(data) {
       // 7. Spiritual Verse & Blessings
       // ==========================================
       doc.fontSize(9).fillColor('#744210')
-        .text('«እግዚአብሔር በደስታ የሚሰጠውን ይወዳልና እያንዳንዱ በልቡ እንዳሰበ ይስጥ።» (፪ኛ ቆሮ ፱:፯)', {
+        .text('«እግዚአብሔር በደስታ የሚሰጠውን ይወዳልና እያንዳንዱ በልቡ እንዳሰበ ይስጥ።» (2ኛ ቆሮንቶስ 9:7)', {
           align: 'center',
           lineGap: 3,
         });
       y += 18;
 
       doc.fontSize(8).fillColor('#718096')
-        .text('"Each of you should give what you have decided in your heart to give, for God loves a cheerful giver." (2 Cor 9:7)', {
+        .text('"Each of you should give what you have decided in your heart to give, for God loves a cheerful giver." (2 Corinthians 9:7)', {
           align: 'center',
         });
       y += 18;
