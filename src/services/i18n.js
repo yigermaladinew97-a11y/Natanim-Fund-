@@ -2,7 +2,7 @@ const { getDatabase } = require('../db');
 
 const MESSAGES = {
   am: {
-    welcome_header: '🕊️ <b>ወደ ናታኒም ፈንድ ቦት በደህና መጡ!</b>\n<i>የቤተክርስቲያን ወርሃዊ መዋጮ አስተዳደር ሥርዓት</i>',
+    welcome_header: '🕊️ <b>ወደ ናታኒም ፈንድ ቦት በደህና መጡ!</b>\n<i>የአርባ ምንጭ ዩኒቨርሲቲ ክርስቲያን ተማሪዎች ናታኒም ፈንድ</i>',
     choose_language: '🌐 <b>እባክዎ የሚመርጡትን ቋንቋ ይምረጡ / Please choose your preferred language:</b>',
     language_set_confirm: '✅ <b>ቋንቋ ወደ አማርኛ ተቀይሯል!</b>\nየቦቱ ምናሌዎችና መልእክቶች በአማርኛ ይቀርባሉ።',
     main_menu: '🏠 <b>ዋና ምናሌ</b>',
@@ -37,7 +37,7 @@ const MESSAGES = {
     btn_cancel: '❌ ሰርዝ',
   },
   en: {
-    welcome_header: '🕊️ <b>Welcome to Natanim Fund Bot!</b>\n<i>Church Monthly Contribution Management System</i>',
+    welcome_header: '🕊️ <b>Welcome to Natanim Fund Bot!</b>\n<i>Arbaminch University Christian Students Natanim Fund</i>',
     choose_language: '🌐 <b>Please choose your preferred language / እባክዎ የሚመርጡትን ቋንቋ ይምረጡ:</b>',
     language_set_confirm: '✅ <b>Language set to English!</b>\nBot menus and instructions will appear in English.',
     main_menu: '🏠 <b>Main Menu</b>',

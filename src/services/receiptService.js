@@ -39,10 +39,10 @@ function generatePaymentReceiptPdf(data) {
         size: 'A5',
         margin: 28,
         info: {
-          Title: `Natanim Church Fund Receipt - ${data.txId || 'Official'}`,
-          Author: 'Natanim Church Fund Management System',
+          Title: `Arbaminch University Christian Students Natanim Fund Receipt - ${data.txId || 'Official'}`,
+          Author: 'Arbaminch University Christian Students Natanim Fund',
           Subject: 'Monthly Contribution Receipt',
-          Keywords: 'church, donation, receipt, natanim, ethiopia',
+          Keywords: 'donation, receipt, natanim, arbaminch, university, fellowship',
         },
       });
 
@@ -85,12 +85,12 @@ function generatePaymentReceiptPdf(data) {
       doc.fontSize(20).fillColor('#C59B27').text('✝', { align: 'center' });
       y += 18;
 
-      doc.fontSize(14).fillColor('#1B365D')
-        .text('ናታኒም የወንጌላውያን አማኞች ቤተክርስቲያን ፈንድ', { align: 'center' });
+      doc.fontSize(13).fillColor('#1B365D')
+        .text('የአርባ ምንጭ ዩኒቨርሲቲ ክርስቲያን ተማሪዎች ናታኒም ፈንድ', { align: 'center' });
       y += 18;
 
-      doc.fontSize(10.5).fillColor('#4A5568')
-        .text('NATANIM EVANGELICAL CHURCH MONTHLY CONTRIBUTION FUND', { align: 'center' });
+      doc.fontSize(9.5).fillColor('#4A5568')
+        .text('ARBAMINCH UNIVERSITY CHRISTIAN STUDENTS NATANIM FUND', { align: 'center' });
       y += 15;
 
       doc.fontSize(11).fillColor('#975A16')
@@ -256,8 +256,8 @@ function generatePaymentReceiptPdf(data) {
 
       doc.fontSize(7.5).fillColor('#A0AEC0')
         .text(
-          'ይህ ደረሰኝ በናታኒም ፈንድ ሥርዓት በራስ-ሰር የተዘጋጀ ይፋዊ ማረጋገጫ ስለሆነ ያለ ማህተም ህጋዊ ነው።\n' +
-          'Generated electronically by Natanim Church Fund Telegram System. Valid without physical signature.',
+          'ይህ ደረሰኝ በአርባ ምንጭ ዩኒቨርሲቲ ክርስቲያን ተማሪዎች ናታኒም ፈንድ በራስ-ሰር የተዘጋጀ ይፋዊ ማረጋገጫ ነው።\n' +
+          'Generated electronically by Arbaminch University Christian Students Natanim Fund. Valid without physical signature.',
           { align: 'center', lineGap: 2 }
         );
 

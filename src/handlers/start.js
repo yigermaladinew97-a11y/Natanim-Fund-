@@ -7,7 +7,7 @@ const { getUserLanguage, setUserLanguage, t } = require('../services/i18n');
 
 function formatHelpMessage(role, fullName, isPending = false) {
   let msg = `🕊️ *Welcome to Natanim Fund Bot*\n`;
-  msg += `*Church Monthly Contribution Management System*\n`;
+  msg += `*Arbaminch University Christian Students Natanim Fund*\n`;
   if (fullName) {
     msg += `👤 Logged in as: *${fullName}*\n`;
   }
@@ -81,8 +81,8 @@ function registerStartHandlers(bot) {
     const isAm = lang === 'am';
 
     let welcomeText = isAm
-      ? `🕊️ *ወደ ናታኒም ፈንድ ቦት በደህና መጡ!*\n*የቤተክርስቲያን ወርሃዊ መዋጮ አስተዳደር ሥርዓት*\n\n`
-      : `🕊️ *Welcome to Natanim Fund Bot!*\n*Church Monthly Contribution Management System*\n\n`;
+      ? `🕊️ *ወደ ናታኒም ፈንድ ቦት በደህና መጡ!*\n*የአርባ ምንጭ ዩኒቨርሲቲ ክርስቲያን ተማሪዎች ናታኒም ፈንድ*\n\n`
+      : `🕊️ *Welcome to Natanim Fund Bot!*\n*Arbaminch University Christian Students Natanim Fund*\n\n`;
 
     if (member && member.status === 'active') {
       welcomeText += isAm
@@ -212,10 +212,10 @@ function registerStartHandlers(bot) {
       // First-time or language unset -> prompt language selection first!
       return ctx.reply(
         `🕊️ *እንኳን ወደ ናታኒም ፈንድ ቦት በደህና መጡ!*\n` +
-        `*የቤተክርስቲያን ወርሃዊ መዋጮ አስተዳደር ሥርዓት*\n` +
+        `*የአርባ ምንጭ ዩኒቨርሲቲ ክርስቲያን ተማሪዎች ናታኒም ፈንድ*\n` +
         `───────────────────────\n` +
         `🕊️ *Welcome to Natanim Fund Bot!*\n` +
-        `*Church Monthly Contribution Management System*\n\n` +
+        `*Arbaminch University Christian Students Natanim Fund*\n\n` +
         `🌐 *እባክዎ የሚመርጡትን ቋንቋ ይምረጡ / Please choose your preferred language:*`,
         {
           parse_mode: 'Markdown',
