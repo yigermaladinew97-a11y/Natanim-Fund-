@@ -73,6 +73,7 @@ async function main() {
         { command: 'remind', description: 'Send reminders to unpaid members (Staff)' },
         { command: 'broadcast', description: 'Send announcement to members (Admin)' },
         { command: 'approvals', description: 'Review pending registrations (Admin)' },
+        { command: 'setstaffgroup', description: 'Connect Telegram Staff Archive Group (Admin)' },
         { command: 'addmember', description: 'Register new member (Admin backup)' },
         { command: 'calendar', description: 'View current Ethiopian Calendar (ዓ.ም.) date' },
         { command: 'help', description: 'Show all bot commands and guide' },

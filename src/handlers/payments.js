@@ -22,6 +22,7 @@ const {
   formatDualDate,
 } = require('../utils/formatters');
 const { getPaymentMethodKeyboard, getCancelKeyboard, getConfirmationKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
+const { forwardVerifiedReceiptToStaffGroup } = require('../services/staffArchive');
 
 function startPaymentWizard(ctx) {
   const members = getAllActiveMembers();
@@ -265,6 +266,19 @@ function registerPaymentHandlers(bot) {
         );
       } catch (notifyErr) {
         console.warn(`[Payment] Could not send receipt DM to member ${submission.telegram_id}:`, notifyErr.message);
+      }
+
+      // Auto-archive verified screenshot to the Fellowship Staff Group (organized by Month Topic)
+      try {
+        await forwardVerifiedReceiptToStaffGroup(ctx.telegram, {
+          submission,
+          member: { id: submission.member_id, full_name: submission.full_name },
+          approverName: staffName,
+          currency,
+          txId: finalTxId,
+        });
+      } catch (archiveErr) {
+        console.warn('[StaffArchive] Could not auto-archive to staff group:', archiveErr.message);
       }
     } catch (err) {
       return ctx.reply(`⚠️ ${err.message}`);

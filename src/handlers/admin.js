@@ -15,12 +15,20 @@ const {
   reversePayment,
   getPaymentByTxId,
 } = require('../services/accounting');
-const { assignRole, revokeRole, listRoles, getMemberByTelegramId } = require('../services/permissions');
+const { assignRole, revokeRole, listRoles, getMemberByTelegramId, isAdmin } = require('../services/permissions');
 const { getDatabase } = require('../db');
 const { setSession, getSession, clearSession } = require('../utils/session');
-const { parseMoneyToCents, formatMoney, escapeHtml } = require('../utils/formatters');
+const { parseMoneyToCents, formatMoney, escapeHtml, getCurrentYearMonth, formatDualMonth } = require('../utils/formatters');
 const { isValidTelegramId, sanitizeText } = require('../utils/validators');
 const { getCancelKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
+const {
+  setStaffGroupId,
+  getStaffGroupDetails,
+  getOrCreateTopic,
+  getMonthTopicKey,
+  getMonthTopicName,
+  getReportsTopicName,
+} = require('../services/staffArchive');
 
 function registerAdminHandlers(bot) {
   // ==========================================
@@ -651,6 +659,89 @@ function registerAdminHandlers(bot) {
   bot.action('menu_audit', requireAdmin, async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.reply(formatAuditTrailMessage(), { parse_mode: 'HTML' });
+  });
+
+  // ==========================================
+  // /setstaffgroup - Connect Staff Telegram Group
+  // ==========================================
+  bot.command('setstaffgroup', async (ctx) => {
+    const senderId = String(ctx.from?.id || '');
+    if (!isAdmin(senderId)) {
+      return ctx.reply('⛔ Only fellowship administrators can configure the staff archive group.', {
+        reply_to_message_id: ctx.message?.message_id,
+      });
+    }
+
+    if (ctx.chat.type === 'private') {
+      return ctx.reply(
+        'ℹ️ <b>Connect Staff Group</b>\n\n' +
+        'Please add this bot to your leadership/staff Telegram group, make it an administrator, and send <code>/setstaffgroup</code> <b>inside that group</b>!',
+        { parse_mode: 'HTML' }
+      );
+    }
+
+    const chatId = ctx.chat.id;
+    const chatTitle = ctx.chat.title || 'Fellowship Staff Group';
+    const isForum = Boolean(ctx.chat.is_forum);
+
+    setStaffGroupId(chatId, chatTitle, senderId);
+
+    let topicNotice = '';
+    if (isForum) {
+      // Initialize current academic month topic & reports topic
+      const currentMonth = getCurrentYearMonth();
+      const currentTopicName = getMonthTopicName(currentMonth);
+      const reportsTopicName = getReportsTopicName();
+
+      const monthThread = await getOrCreateTopic(ctx.telegram, chatId, getMonthTopicKey(currentMonth), currentTopicName, 0x6FB9F0);
+      const reportsThread = await getOrCreateTopic(ctx.telegram, chatId, 'reports', reportsTopicName, 0xFFD67E);
+
+      topicNotice =
+        `\n\n📁 <b>Month Folders (Forum Topics) Initialized:</b>\n` +
+        `• <b>${escapeHtml(currentTopicName)}</b> (Folder ID: <code>${monthThread || 'General'}</code>)\n` +
+        `• <b>${escapeHtml(reportsTopicName)}</b> (Folder ID: <code>${reportsThread || 'General'}</code>)\n\n` +
+        `<i>As administrators approve payment screenshots, verified receipts will be posted directly into their respective month folders!</i>`;
+    } else {
+      topicNotice =
+        `\n\n💡 <b>Tip to enable Month Folders:</b>\n` +
+        `1. Open Group Settings ⚙️\n` +
+        `2. Turn on <b>Topics</b> (Forum mode)\n` +
+        `3. Re-type <code>/setstaffgroup</code> so the bot creates month folders automatically!`;
+    }
+
+    await ctx.reply(
+      `🎉 <b>Staff Archive Group Successfully Connected!</b>\n\n` +
+      `• <b>Group Name:</b> ${escapeHtml(chatTitle)}\n` +
+      `• <b>Group ID:</b> <code>${chatId}</code>\n` +
+      `• <b>Topics (Folders) Mode:</b> ${isForum ? '✅ Active' : '⚪ Standard Group'}` +
+      topicNotice,
+      {
+        parse_mode: 'HTML',
+        reply_to_message_id: ctx.message?.message_id,
+      }
+    );
+  });
+
+  bot.command('staffstatus', async (ctx) => {
+    const senderId = String(ctx.from?.id || '');
+    if (!isAdmin(senderId)) {
+      return ctx.reply('⛔ Only fellowship administrators can check staff group status.');
+    }
+    const details = getStaffGroupDetails();
+    if (!details.groupId) {
+      return ctx.reply(
+        '⚠️ <b>Staff Group Not Connected</b>\n\n' +
+        'Please add the bot to your leadership group and send <code>/setstaffgroup</code> in that group.',
+        { parse_mode: 'HTML' }
+      );
+    }
+    return ctx.reply(
+      `🏛️ <b>Connected Staff Archive Group:</b>\n\n` +
+      `• <b>Title:</b> ${escapeHtml(details.groupTitle)}\n` +
+      `• <b>Group ID:</b> <code>${details.groupId}</code>\n` +
+      `• <b>Status:</b> Ready to archive verified screenshots and reports.`,
+      { parse_mode: 'HTML' }
+    );
   });
 }
 

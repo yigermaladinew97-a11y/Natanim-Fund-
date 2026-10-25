@@ -142,6 +142,16 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Forum topic threads mapping for staff archive group (month folders & reports)
+CREATE TABLE IF NOT EXISTS group_topics (
+  group_id TEXT NOT NULL,
+  topic_key TEXT NOT NULL,
+  topic_name TEXT NOT NULL,
+  thread_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (group_id, topic_key)
+);
+
 -- Performance and Integrity Indexes
 CREATE INDEX IF NOT EXISTS idx_members_telegram_id ON members(telegram_id);
 CREATE INDEX IF NOT EXISTS idx_members_status ON members(status);
