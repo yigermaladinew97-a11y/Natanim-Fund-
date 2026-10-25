@@ -78,8 +78,46 @@ async function createDatabaseBackup(customDir) {
   };
 }
 
+/**
+ * Send database backup snapshot directly to a Telegram chat via native fetch.
+ * Uses native FormData and Blob to prevent socket hang up on Windows.
+ */
+async function sendDatabaseBackupToChat(botToken, chatId) {
+  const backupResult = await createDatabaseBackup();
+
+  const caption =
+    `💾 <b>Natanim Fund Database Backup</b>\n\n` +
+    `• <b>File:</b> <code>${backupResult.filename}</code>\n` +
+    `• <b>Size:</b> ${backupResult.sizeFormatted}\n` +
+    `• <b>Date:</b> ${new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC\n\n` +
+    `<i>Keep this file secure. It contains complete member and transaction records.</i>`;
+
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  form.append('document', new Blob([backupResult.buffer]), backupResult.filename);
+  form.append('caption', caption);
+  form.append('parse_mode', 'HTML');
+
+  const res = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
+    method: 'POST',
+    body: form,
+  });
+
+  const data = await res.json();
+  if (!data.ok) {
+    throw new Error(data.description || 'Telegram API rejected document upload');
+  }
+
+  return {
+    success: true,
+    backupResult,
+    data,
+  };
+}
+
 module.exports = {
   createDatabaseBackup,
+  sendDatabaseBackupToChat,
   formatBytes,
   pruneOldBackups,
 };

@@ -34,9 +34,9 @@ const {
   getReportsTopicName,
   inviteTreasurerToStaffGroup,
   removeTreasurerFromStaffGroup,
-} = require('../services/staffArchive');
-const { createDatabaseBackup } = require('../services/backupService');
+const { createDatabaseBackup, sendDatabaseBackupToChat } = require('../services/backupService');
 const { getSystemDiagnostics, formatDiagnosticsHtml } = require('../services/diagnosticsService');
+const { config } = require('../config');
 
 function registerAdminHandlers(bot) {
   // ==========================================
@@ -966,43 +966,7 @@ function registerAdminHandlers(bot) {
     } catch (_) {}
 
     try {
-      const backupResult = await createDatabaseBackup();
-
-      let sent = false;
-      let lastErr = null;
-
-      // Retry up to 3 times in case of momentary Telegram socket hang up or network jitter
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          await ctx.replyWithDocument(
-            {
-              source: backupResult.buffer,
-              filename: backupResult.filename,
-            },
-            {
-              caption:
-                `💾 <b>Natanim Fund Database Backup</b>\n\n` +
-                `• <b>File:</b> <code>${backupResult.filename}</code>\n` +
-                `• <b>Size:</b> ${backupResult.sizeFormatted}\n` +
-                `• <b>Date:</b> ${new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC\n\n` +
-                `<i>Keep this file secure. It contains complete member and transaction records.</i>`,
-              parse_mode: 'HTML',
-            }
-          );
-          sent = true;
-          break;
-        } catch (uploadErr) {
-          lastErr = uploadErr;
-          console.warn(`[Backup] Upload attempt ${attempt} failed: ${uploadErr.message}. Retrying...`);
-          if (attempt < 3) {
-            await new Promise((resolve) => setTimeout(resolve, 1500));
-          }
-        }
-      }
-
-      if (!sent) {
-        throw lastErr;
-      }
+      await sendDatabaseBackupToChat(config.botToken, ctx.from.id);
 
       if (statusMsg) {
         try {
