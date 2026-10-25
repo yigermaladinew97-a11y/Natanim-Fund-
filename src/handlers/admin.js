@@ -34,6 +34,7 @@ const {
   getReportsTopicName,
   inviteTreasurerToStaffGroup,
   removeTreasurerFromStaffGroup,
+} = require('../services/staffArchive');
 const { createDatabaseBackup, sendDatabaseBackupToChat } = require('../services/backupService');
 const { getSystemDiagnostics, formatDiagnosticsHtml } = require('../services/diagnosticsService');
 const { config } = require('../config');
