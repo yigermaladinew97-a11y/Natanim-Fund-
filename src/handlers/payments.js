@@ -214,6 +214,7 @@ function registerPaymentHandlers(bot) {
     try {
       const { payment, monthsCovered, txId, submission } = approvePaymentSubmission(submissionId, staffId, monthsCount);
       const currency = getCurrency();
+      const finalTxId = txId || (payment && payment.tx_id) || `TX-${submission.id}`;
 
       const coveredSummary = monthsCovered.length > 1
         ? `${formatDualMonth(monthsCovered[0])} to ${formatDualMonth(monthsCovered[monthsCovered.length - 1])} (${monthsCovered.length} months)`
@@ -225,7 +226,7 @@ function registerPaymentHandlers(bot) {
         `• <b>Months Covered (${monthsCovered.length}):</b> <code>${escapeHtml(coveredSummary)}</code>\n` +
         `• <b>Total Amount:</b> <b>${escapeHtml(formatMoney(submission.amount_cents, currency))}</b>\n` +
         `• <b>Payment Method:</b> ${escapeHtml(formatPaymentMethod(submission.payment_method))}\n` +
-        `• <b>Transaction / Batch ID:</b> <code>${escapeHtml(txId || payment.tx_id)}</code>\n` +
+        `• <b>Transaction / Batch ID:</b> <code>${escapeHtml(finalTxId)}</code>\n` +
         `• <b>Verified By:</b> ${escapeHtml(staffName)} (<code>${staffId}</code>)\n` +
         `• <b>Status:</b> 🟢 Fully Paid for all ${monthsCovered.length} month(s)`;
 
@@ -238,7 +239,6 @@ function registerPaymentHandlers(bot) {
       // Send official digital receipt message to member
       try {
         const coveredList = monthsCovered.map(formatDualMonth).join(', ');
-        const finalTxId = txId || payment.tx_id;
 
         const receiptMsg =
           `🕊️ <b>የአርባ ምንጭ ዩኒቨርሲቲ ክርስቲያን ተማሪዎች ናታኒም ፈንድ</b>\n` +
