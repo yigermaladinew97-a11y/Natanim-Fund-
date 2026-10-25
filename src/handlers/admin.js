@@ -25,6 +25,7 @@ const {
   setStaffGroupId,
   getStaffGroupDetails,
   getOrCreateTopic,
+  initializeAcademicYearTopics,
   getMonthTopicKey,
   getMonthTopicName,
   getReportsTopicName,
@@ -688,25 +689,21 @@ function registerAdminHandlers(bot) {
 
     let topicNotice = '';
     if (isForum) {
-      // Initialize current academic month topic & reports topic
-      const currentMonth = getCurrentYearMonth();
-      const currentTopicName = getMonthTopicName(currentMonth);
-      const reportsTopicName = getReportsTopicName();
-
-      const monthThread = await getOrCreateTopic(ctx.telegram, chatId, getMonthTopicKey(currentMonth), currentTopicName, 0x6FB9F0);
-      const reportsThread = await getOrCreateTopic(ctx.telegram, chatId, 'reports', reportsTopicName, 0xFFD67E);
+      const topics = await initializeAcademicYearTopics(ctx.telegram, chatId);
+      const monthTopics = topics.filter((t) => t.month !== 'reports');
+      const reportsTopic = topics.find((t) => t.month === 'reports');
 
       topicNotice =
-        `\n\n📁 <b>Month Folders (Forum Topics) Initialized:</b>\n` +
-        `• <b>${escapeHtml(currentTopicName)}</b> (Folder ID: <code>${monthThread || 'General'}</code>)\n` +
-        `• <b>${escapeHtml(reportsTopicName)}</b> (Folder ID: <code>${reportsThread || 'General'}</code>)\n\n` +
-        `<i>As administrators approve payment screenshots, verified receipts will be posted directly into their respective month folders!</i>`;
+        `\n\n📁 <b>Academic Year Month Folders Initialized (${monthTopics.length} Months):</b>\n` +
+        monthTopics.map((t) => `• <b>${escapeHtml(t.name)}</b>`).join('\n') +
+        (reportsTopic ? `\n• <b>${escapeHtml(reportsTopic.name)}</b>` : '') +
+        `\n\n<i>As administrators approve payment screenshots, verified receipts will be posted directly into their respective month folders!</i>`;
     } else {
       topicNotice =
         `\n\n💡 <b>Tip to enable Month Folders:</b>\n` +
         `1. Open Group Settings ⚙️\n` +
         `2. Turn on <b>Topics</b> (Forum mode)\n` +
-        `3. Re-type <code>/setstaffgroup</code> so the bot creates month folders automatically!`;
+        `3. Re-type <code>/setstaffgroup</code> so the bot creates all month folders automatically!`;
     }
 
     await ctx.reply(
@@ -715,6 +712,34 @@ function registerAdminHandlers(bot) {
       `• <b>Group ID:</b> <code>${chatId}</code>\n` +
       `• <b>Topics (Folders) Mode:</b> ${isForum ? '✅ Active' : '⚪ Standard Group'}` +
       topicNotice,
+      {
+        parse_mode: 'HTML',
+        reply_to_message_id: ctx.message?.message_id,
+      }
+    );
+  });
+
+  bot.command(['initfolders', 'createmonths'], async (ctx) => {
+    const senderId = String(ctx.from?.id || '');
+    if (!isAdmin(senderId)) {
+      return ctx.reply('⛔ Only fellowship administrators can initialize folder topics.');
+    }
+    const details = getStaffGroupDetails();
+    const targetGroupId = ctx.chat.type !== 'private' ? ctx.chat.id : details.groupId;
+    if (!targetGroupId) {
+      return ctx.reply('⚠️ Please run /setstaffgroup inside your leadership group first.');
+    }
+
+    await ctx.reply('⏳ <b>Initializing all 9 Ethiopian Academic Year Month Folders (ጥቅምት እስከ ሰኔ)...</b>', {
+      parse_mode: 'HTML',
+      reply_to_message_id: ctx.message?.message_id,
+    });
+
+    const topics = await initializeAcademicYearTopics(ctx.telegram, targetGroupId);
+    const summary = topics.map((t) => `• ${escapeHtml(t.name)} (ID: <code>${t.threadId || 'General'}</code>)`).join('\n');
+
+    await ctx.reply(
+      `✅ <b>All Academic Year Folders are Ready!</b>\n\n${summary}`,
       {
         parse_mode: 'HTML',
         reply_to_message_id: ctx.message?.message_id,

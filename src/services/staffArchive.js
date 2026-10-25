@@ -1,5 +1,13 @@
 const { getDatabase } = require('../db');
-const { formatMoney, formatPaymentMethod, formatDualMonth, formatDualDate, escapeHtml } = require('../utils/formatters');
+const {
+  formatMoney,
+  formatPaymentMethod,
+  formatDualMonth,
+  formatDualDate,
+  escapeHtml,
+  getNextAcademicMonthsList,
+  getCurrentYearMonth,
+} = require('../utils/formatters');
 const { config } = require('../config');
 
 /**
@@ -96,6 +104,35 @@ async function getOrCreateTopic(telegram, groupId, topicKey, topicName, iconColo
   }
 }
 
+/**
+ * Initialize all 9 Academic Year Topics (October to June / ጥቅምት እስከ ሰኔ)
+ * plus the Monthly Reports topic in the staff archive group.
+ */
+async function initializeAcademicYearTopics(telegram, groupId, startYearMonth) {
+  const currentMonth = startYearMonth || getCurrentYearMonth();
+  const months = getNextAcademicMonthsList(currentMonth, 9);
+  const createdTopics = [];
+
+  const topicColors = [0x6FB9F0, 0xFFD67E, 0xCB86DB, 0x8EEE98, 0xFF93B2, 0xFB6F5F];
+
+  for (let i = 0; i < months.length; i++) {
+    const m = months[i];
+    const key = getMonthTopicKey(m);
+    const name = getMonthTopicName(m);
+    const color = topicColors[i % topicColors.length];
+    const threadId = await getOrCreateTopic(telegram, groupId, key, name, color);
+    createdTopics.push({ month: m, key, name, threadId });
+    // Modest delay between Telegram API calls
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  }
+
+  // Also ensure Reports topic
+  const reportsThread = await getOrCreateTopic(telegram, groupId, 'reports', getReportsTopicName(), 0xFFD67E);
+  createdTopics.push({ month: 'reports', key: 'reports', name: getReportsTopicName(), threadId: reportsThread });
+
+  return createdTopics;
+}
+
 async function forwardVerifiedReceiptToStaffGroup(telegram, {
   submission,
   member,
@@ -180,6 +217,7 @@ module.exports = {
   getStaffGroupDetails,
   setStaffGroupId,
   getOrCreateTopic,
+  initializeAcademicYearTopics,
   getMonthTopicKey,
   getMonthTopicName,
   getReportsTopicName,

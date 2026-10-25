@@ -8,6 +8,7 @@ const {
   getStaffGroupDetails,
   setStaffGroupId,
   getOrCreateTopic,
+  initializeAcademicYearTopics,
   getMonthTopicKey,
   getMonthTopicName,
   getReportsTopicName,
@@ -134,5 +135,31 @@ test('Staff Archive Group & Forum Topic (Folder) Management Tests', async (t) =>
     assert.strictEqual(sentDoc.doc.filename, 'report_2026_10.csv');
   });
 
+  await t.test('6. initializeAcademicYearTopics creates all 9 campus months + reports topic', async () => {
+    let topicCounter = 100;
+    const created = [];
+    const mockTelegram = {
+      async createForumTopic(chatId, name, options) {
+        topicCounter++;
+        created.push({ chatId, name, options, threadId: topicCounter });
+        return { message_thread_id: topicCounter };
+      },
+    };
+
+    const topics = await initializeAcademicYearTopics(mockTelegram, '-100987654321', '2026-10');
+    assert.strictEqual(topics.length, 10); // 9 months + reports
+    const monthTopics = topics.filter((t) => t.month !== 'reports');
+    assert.strictEqual(monthTopics.length, 9);
+    assert.strictEqual(monthTopics[0].month, '2026-10');
+    assert.strictEqual(monthTopics[8].month, '2027-06');
+    assert.ok(monthTopics[0].name.includes('ጥቅምት'));
+    assert.ok(monthTopics[8].name.includes('ሰኔ'));
+
+    const reports = topics.find((t) => t.month === 'reports');
+    assert.ok(reports);
+    assert.ok(reports.name.includes('ሪፖርቶች'));
+  });
+
   cleanup();
 });
+
