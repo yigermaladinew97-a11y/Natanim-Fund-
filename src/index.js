@@ -102,8 +102,8 @@ async function main() {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok', service: 'Natanim Fund Telegram Bot', uptime: process.uptime() }));
     });
-    server.listen(port, () => {
-      console.log(`[HTTP] Health check server listening on port ${port}`);
+    server.listen(port, '0.0.0.0', () => {
+      console.log(`[HTTP] Health check server listening on 0.0.0.0:${port}`);
     });
 
     // Start Telegram polling
