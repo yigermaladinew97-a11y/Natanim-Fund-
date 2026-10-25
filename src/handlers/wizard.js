@@ -552,6 +552,38 @@ function registerWizardHandler(bot) {
     }
 
     // ----------------------------------------------------
+    // DEACTIVATE MEMBER WIZARD (Wait Reason)
+    // ----------------------------------------------------
+    if (session.step === 'DEACTIVATE_WAIT_REASON') {
+      const memberId = session.memberId;
+      const cleanReason = sanitizeText(text, 255) || 'Deactivated by administrator';
+      clearSession(userId);
+
+      try {
+        const member = deactivateMember({
+          memberId,
+          reason: cleanReason,
+          actorTelegramId: userId,
+        });
+
+        return ctx.reply(
+          `✅ Member <b>${escapeHtml(member.full_name)}</b> (#${member.id}) has been deactivated.\n\n` +
+          `• <b>Reason:</b> ${escapeHtml(cleanReason)}\n` +
+          `• <b>Status:</b> 🔴 Inactive\n\n` +
+          `<i>If you also wish to permanently delete their payment history and obligations, tap below:</i>`,
+          {
+            parse_mode: 'HTML',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback('🗑️ Wipe Payment History', `purge_prompt_${member.id}`)],
+            ]),
+          }
+        );
+      } catch (err) {
+        return ctx.reply(`❌ Deactivation failed: ${err.message}`, getMainMenuKeyboard(ctx.state?.role));
+      }
+    }
+
+    // ----------------------------------------------------
     // SETAMOUNT WIZARD
     // ----------------------------------------------------
     if (session.step === 'SETAMOUNT_WAIT_VALUE') {

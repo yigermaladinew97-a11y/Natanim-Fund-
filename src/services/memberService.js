@@ -168,6 +168,106 @@ function getAllActiveMembers() {
   return db.prepare("SELECT * FROM members WHERE status = 'active' ORDER BY full_name COLLATE NOCASE ASC").all();
 }
 
+function getAllInactiveMembers() {
+  const db = getDatabase();
+  return db.prepare("SELECT * FROM members WHERE status = 'inactive' ORDER BY full_name COLLATE NOCASE ASC").all();
+}
+
+/**
+ * Get statistical summary of records associated with a member before purging
+ */
+function getMemberPurgeSummary(memberId) {
+  const db = getDatabase();
+  const member = db.prepare('SELECT * FROM members WHERE id = ?').get(memberId);
+  if (!member) {
+    throw new Error('Member not found.');
+  }
+
+  const paymentsStat = db.prepare(`
+    SELECT
+      COUNT(id) AS count,
+      COALESCE(SUM(amount_cents), 0) AS total_cents
+    FROM payments
+    WHERE member_id = ?
+  `).get(memberId);
+
+  const obligationsCount = db.prepare('SELECT COUNT(*) AS count FROM obligations WHERE member_id = ?').get(memberId).count;
+  const submissionsCount = db.prepare('SELECT COUNT(*) AS count FROM payment_submissions WHERE member_id = ?').get(memberId).count;
+
+  return {
+    member,
+    paymentsCount: paymentsStat.count,
+    paymentsTotalCents: paymentsStat.total_cents,
+    obligationsCount,
+    submissionsCount,
+  };
+}
+
+/**
+ * Permanently purge payment records, obligations, and submission history for a deactivated member.
+ * Only allowed for members with status = 'inactive'.
+ */
+function purgeMemberHistory({ memberId, actorTelegramId, deleteMemberRecord = false }) {
+  const db = getDatabase();
+  const member = db.prepare('SELECT * FROM members WHERE id = ?').get(memberId);
+  if (!member) {
+    throw new Error('Member not found.');
+  }
+
+  if (member.status !== 'inactive') {
+    throw new Error(`Member "${member.full_name}" is currently active. You must deactivate the member before deleting their history.`);
+  }
+
+  const summary = getMemberPurgeSummary(memberId);
+
+  const purgeTx = db.transaction(() => {
+    // 1. Delete payment reversals associated with this member's payments
+    db.prepare('DELETE FROM payment_reversals WHERE payment_id IN (SELECT id FROM payments WHERE member_id = ?)').run(memberId);
+
+    // 2. Delete payment submissions
+    db.prepare('DELETE FROM payment_submissions WHERE member_id = ?').run(memberId);
+
+    // 3. Delete payments
+    db.prepare('DELETE FROM payments WHERE member_id = ?').run(memberId);
+
+    // 4. Delete obligations
+    db.prepare('DELETE FROM obligations WHERE member_id = ?').run(memberId);
+
+    // 5. Delete reminder logs
+    db.prepare('DELETE FROM reminder_log WHERE member_id = ?').run(memberId);
+
+    // 6. Delete member record if requested
+    if (deleteMemberRecord) {
+      db.prepare('DELETE FROM members WHERE id = ?').run(memberId);
+    }
+
+    // 7. Write permanent audit log entry
+    db.prepare(`
+      INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
+      VALUES (?, ?, ?, ?, ?)
+    `).run('PURGE_MEMBER_HISTORY', 'members', String(memberId), String(actorTelegramId), JSON.stringify({
+      fullName: member.full_name,
+      telegramId: member.telegram_id,
+      deletedPaymentsCount: summary.paymentsCount,
+      deletedPaymentsTotalCents: summary.paymentsTotalCents,
+      deletedObligationsCount: summary.obligationsCount,
+      deletedSubmissionsCount: summary.submissionsCount,
+      memberRecordDeleted: Boolean(deleteMemberRecord),
+    }));
+  });
+
+  purgeTx();
+
+  return {
+    member,
+    deletedPaymentsCount: summary.paymentsCount,
+    deletedPaymentsTotalCents: summary.paymentsTotalCents,
+    deletedObligationsCount: summary.obligationsCount,
+    deletedSubmissionsCount: summary.submissionsCount,
+    memberRecordDeleted: Boolean(deleteMemberRecord),
+  };
+}
+
 function seedDemoMembers(actorTelegramId) {
   const samples = [
     { fullName: 'Yohannes Girma', phone: '+251911112233', telegramId: '987000101' },
@@ -379,6 +479,9 @@ module.exports = {
   getMemberByTelegramId,
   listActiveMembers,
   getAllActiveMembers,
+  getAllInactiveMembers,
+  getMemberPurgeSummary,
+  purgeMemberHistory,
   seedDemoMembers,
   createRegistrationRequest,
   getPendingRegistrationRequests,

@@ -4,6 +4,9 @@ const {
   registerMember,
   deactivateMember,
   getAllActiveMembers,
+  getAllInactiveMembers,
+  getMemberPurgeSummary,
+  purgeMemberHistory,
   getPendingRegistrationRequests,
   approveRegistrationRequest,
   rejectRegistrationRequest,
@@ -280,9 +283,16 @@ function registerAdminHandlers(bot) {
           reason,
           actorTelegramId: ctx.from.id,
         });
-        return ctx.reply(`✅ Member *${member.full_name}* (#${member.id}) has been deactivated. Historical records have been preserved.`, {
-          parse_mode: 'Markdown',
-        });
+        return ctx.reply(
+          `✅ Member <b>${escapeHtml(member.full_name)}</b> (#${member.id}) has been deactivated.\n\n` +
+          `<i>Their status is now inactive. If you also wish to permanently wipe their payment history and obligations, tap below:</i>`,
+          {
+            parse_mode: 'HTML',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback('🗑️ Wipe Payment History', `purge_prompt_${member.id}`)],
+            ]),
+          }
+        );
       } catch (err) {
         return ctx.reply(`❌ Deactivation failed: ${err.message}`);
       }
@@ -335,6 +345,136 @@ function registerAdminHandlers(bot) {
       `Please reply with the *reason* for deactivating member #${memberId}:`,
       { parse_mode: 'Markdown', ...getCancelKeyboard() }
     );
+  });
+
+  // ==========================================
+  // /purgemember - Delete Payment History for Deactivated Member
+  // ==========================================
+  async function renderPurgePrompt(ctx, memberId) {
+    try {
+      const summary = getMemberPurgeSummary(memberId);
+      const currency = getCurrency();
+
+      if (summary.member.status !== 'inactive') {
+        return ctx.reply(
+          `⛔ <b>Member is still Active</b>\n\n` +
+          `<b>${escapeHtml(summary.member.full_name)}</b> (#${summary.member.id}) is currently active.\n` +
+          `You must deactivate the member with <code>/deactivate ${summary.member.id}</code> before you can delete their history.`,
+          { parse_mode: 'HTML' }
+        );
+      }
+
+      const text =
+        `⚠️ <b>ማስጠንቀቂያ / CONFIRM PERMANENT DELETION</b>\n\n` +
+        `You are about to permanently delete the financial history of:\n` +
+        `• <b>ተማሪ / Member:</b> ${escapeHtml(summary.member.full_name)} (#${summary.member.id})\n` +
+        `• <b>Telegram ID:</b> <code>${escapeHtml(summary.member.telegram_id)}</code>\n` +
+        `• <b>ሁኔታ / Status:</b> 🔴 Inactive (የተሰናበተ)\n\n` +
+        `<b>የሚጠፉ መረጃዎች / Records to be Permanently Erased:</b>\n` +
+        `• የተከፈሉ ክፍያዎች / Payments: <b>${summary.paymentsCount}</b> (${formatMoney(summary.paymentsTotalCents, currency)})\n` +
+        `• ወርሃዊ እዳዎች / Obligations: <b>${summary.obligationsCount}</b>\n` +
+        `• ደረሰኞች / Submissions: <b>${summary.submissionsCount}</b>\n\n` +
+        `⚠️ <i>ይህ እርምጃ አንዴ ከተፈጸመ በኋላ ፈጽሞ አይመለስም! / This action is IRREVERSIBLE and cannot be undone.</i>\n\n` +
+        `Choose an action:`;
+
+      const keyboard = Markup.inlineKeyboard([
+        [
+          Markup.button.callback('🗑️ ታሪክ ብቻ አጥፋ (Delete History Only)', `purge_hist_confirm_${memberId}`),
+        ],
+        [
+          Markup.button.callback('💥 ሙሉ በሙሉ ሰርዝ (Wipe Member & History)', `purge_all_confirm_${memberId}`),
+        ],
+        [
+          Markup.button.callback('❌ ሰርዝ / Cancel', 'action_cancel'),
+        ],
+      ]);
+
+      await ctx.reply(text, { parse_mode: 'HTML', ...keyboard });
+    } catch (err) {
+      await ctx.reply(`❌ Error: ${err.message}`);
+    }
+  }
+
+  bot.command(['purgemember', 'deletememberhistory'], requireAdmin, async (ctx) => {
+    const parts = ctx.message.text.trim().split(/\s+/).slice(1);
+    if (parts.length >= 1) {
+      const memberId = parseInt(parts[0], 10);
+      return renderPurgePrompt(ctx, memberId);
+    }
+
+    const inactive = getAllInactiveMembers();
+    if (inactive.length === 0) {
+      return ctx.reply('ℹ️ No inactive / deactivated members found.');
+    }
+
+    const buttons = inactive.slice(0, 10).map((m) => [
+      Markup.button.callback(`${m.full_name} (#${m.id})`, `purge_prompt_${m.id}`),
+    ]);
+    buttons.push([Markup.button.callback('❌ Cancel', 'action_cancel')]);
+
+    await ctx.reply(
+      '🗑️ <b>Select Inactive Member to Purge History:</b>\n\n' +
+      'Choose a deactivated member below to review and permanently delete their payment history:',
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard(buttons),
+      }
+    );
+  });
+
+  bot.action(/^purge_prompt_(\d+)$/, requireAdmin, async (ctx) => {
+    await ctx.answerCbQuery();
+    const memberId = parseInt(ctx.match[1], 10);
+    await renderPurgePrompt(ctx, memberId);
+  });
+
+  bot.action(/^purge_hist_confirm_(\d+)$/, requireAdmin, async (ctx) => {
+    await ctx.answerCbQuery('Purging history...');
+    const memberId = parseInt(ctx.match[1], 10);
+    try {
+      const res = await purgeMemberHistory({
+        memberId,
+        actorTelegramId: ctx.from.id,
+        deleteMemberRecord: false,
+      });
+      const currency = getCurrency();
+      await ctx.editMessageText(
+        `🗑️ <b>Payment History Successfully Deleted!</b>\n\n` +
+        `• <b>Member:</b> ${escapeHtml(res.member.full_name)} (#${memberId})\n` +
+        `• <b>Status:</b> Inactive (Member record retained)\n` +
+        `• <b>Deleted Payments:</b> ${res.deletedPaymentsCount} (${formatMoney(res.deletedPaymentsTotalCents, currency)})\n` +
+        `• <b>Deleted Obligations:</b> ${res.deletedObligationsCount}\n` +
+        `• <b>Deleted Submissions:</b> ${res.deletedSubmissionsCount}\n\n` +
+        `<i>Permanent audit log has been created.</i>`,
+        { parse_mode: 'HTML' }
+      );
+    } catch (err) {
+      await ctx.reply(`❌ Purge failed: ${err.message}`);
+    }
+  });
+
+  bot.action(/^purge_all_confirm_(\d+)$/, requireAdmin, async (ctx) => {
+    await ctx.answerCbQuery('Wiping member and history...');
+    const memberId = parseInt(ctx.match[1], 10);
+    try {
+      const res = await purgeMemberHistory({
+        memberId,
+        actorTelegramId: ctx.from.id,
+        deleteMemberRecord: true,
+      });
+      const currency = getCurrency();
+      await ctx.editMessageText(
+        `💥 <b>Member & History Completely Wiped!</b>\n\n` +
+        `• <b>Deleted Member:</b> ${escapeHtml(res.member.full_name)} (#${memberId})\n` +
+        `• <b>Deleted Payments:</b> ${res.deletedPaymentsCount} (${formatMoney(res.deletedPaymentsTotalCents, currency)})\n` +
+        `• <b>Deleted Obligations:</b> ${res.deletedObligationsCount}\n` +
+        `• <b>Deleted Submissions:</b> ${res.deletedSubmissionsCount}\n\n` +
+        `<i>The member and all associated financial records have been permanently erased from the database.</i>`,
+        { parse_mode: 'HTML' }
+      );
+    } catch (err) {
+      await ctx.reply(`❌ Purge failed: ${err.message}`);
+    }
   });
 
   // ==========================================
