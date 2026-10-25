@@ -95,6 +95,17 @@ async function main() {
       console.error('[Process CrashGuard] Uncaught Exception:', err.message, err.stack);
     });
 
+    // Start minimal HTTP health check server for cloud platforms (Render, Koyeb, etc.)
+    const http = require('node:http');
+    const port = process.env.PORT || 3000;
+    const server = http.createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok', service: 'Natanim Fund Telegram Bot', uptime: process.uptime() }));
+    });
+    server.listen(port, () => {
+      console.log(`[HTTP] Health check server listening on port ${port}`);
+    });
+
     // Start Telegram polling
     console.log('[Bot] Launching Natanim Fund Telegram bot (long polling)...');
     await bot.launch();
@@ -104,6 +115,9 @@ async function main() {
     const shutdown = async (signal) => {
       console.log(`\n[Shutdown] Received ${signal}. Stopping services gracefully...`);
       stopScheduler();
+      try {
+        server.close();
+      } catch (_) {}
       try {
         bot.stop(signal);
       } catch (_) {}
