@@ -74,6 +74,8 @@ async function main() {
         { command: 'broadcast', description: 'Send announcement to members (Admin)' },
         { command: 'approvals', description: 'Review pending registrations (Admin)' },
         { command: 'setstaffgroup', description: 'Connect Telegram Staff Archive Group (Admin)' },
+        { command: 'diagnostics', description: 'System health & operational diagnostics (Admin)' },
+        { command: 'backup', description: 'Download live SQLite database backup (Admin)' },
         { command: 'addmember', description: 'Register new member (Admin backup)' },
         { command: 'calendar', description: 'View current Ethiopian Calendar (ዓ.ም.) date' },
         { command: 'help', description: 'Show all bot commands and guide' },
@@ -83,6 +85,15 @@ async function main() {
     } catch (cmdErr) {
       console.warn('[Bot] Note: Could not set Telegram menu commands:', cmdErr.message);
     }
+
+    // Process Crash Guards for 24/7 Production Stability
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('[Process CrashGuard] Unhandled Rejection:', reason);
+    });
+
+    process.on('uncaughtException', (err) => {
+      console.error('[Process CrashGuard] Uncaught Exception:', err.message, err.stack);
+    });
 
     // Start Telegram polling
     console.log('[Bot] Launching Natanim Fund Telegram bot (long polling)...');

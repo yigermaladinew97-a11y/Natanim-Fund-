@@ -35,6 +35,8 @@ const {
   inviteTreasurerToStaffGroup,
   removeTreasurerFromStaffGroup,
 } = require('../services/staffArchive');
+const { createDatabaseBackup } = require('../services/backupService');
+const { getSystemDiagnostics, formatDiagnosticsHtml } = require('../services/diagnosticsService');
 
 function registerAdminHandlers(bot) {
   // ==========================================
@@ -939,6 +941,58 @@ function registerAdminHandlers(bot) {
       `• <b>Status:</b> Ready to archive verified screenshots and reports.`,
       { parse_mode: 'HTML' }
     );
+  });
+
+  // ==========================================
+  // /diagnostics or /system - Health Check
+  // ==========================================
+  bot.command(['diagnostics', 'system'], requireAdmin, async (ctx) => {
+    try {
+      const diag = getSystemDiagnostics();
+      const text = formatDiagnosticsHtml(diag);
+      return ctx.reply(text, { parse_mode: 'HTML' });
+    } catch (err) {
+      return ctx.reply(`❌ Failed to retrieve diagnostics: ${err.message}`);
+    }
+  });
+
+  // ==========================================
+  // /backup - Live SQLite Database Backup
+  // ==========================================
+  bot.command('backup', requireAdmin, async (ctx) => {
+    let statusMsg = null;
+    try {
+      statusMsg = await ctx.reply('⏳ <i>Generating safe online SQLite backup snapshot...</i>', { parse_mode: 'HTML' });
+    } catch (_) {}
+
+    try {
+      const backupResult = await createDatabaseBackup();
+
+      await ctx.replyWithDocument(
+        {
+          source: backupResult.backupPath,
+          filename: backupResult.filename,
+        },
+        {
+          caption:
+            `💾 <b>Natanim Fund Database Backup</b>\n\n` +
+            `• <b>File:</b> <code>${backupResult.filename}</code>\n` +
+            `• <b>Size:</b> ${backupResult.sizeFormatted}\n` +
+            `• <b>Date:</b> ${new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC\n\n` +
+            `<i>Keep this file secure. It contains complete member and transaction records.</i>`,
+          parse_mode: 'HTML',
+        }
+      );
+
+      if (statusMsg) {
+        try {
+          await ctx.deleteMessage(statusMsg.message_id);
+        } catch (_) {}
+      }
+    } catch (err) {
+      console.error('[Backup Error]:', err);
+      return ctx.reply(`❌ Failed to create database backup: ${err.message}`);
+    }
   });
 }
 
