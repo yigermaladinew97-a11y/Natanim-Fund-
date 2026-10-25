@@ -1,6 +1,6 @@
 const { getDatabase } = require('../db');
 const { generateCsv } = require('../utils/csv');
-const { formatMoney, formatStatus, formatPaymentMethod } = require('../utils/formatters');
+const { formatMoney, formatStatus, formatPaymentMethod, formatDualMonth } = require('../utils/formatters');
 const { getCurrency } = require('./accounting');
 
 function getMonthlyReportSummary(yearMonth) {
@@ -165,8 +165,46 @@ function exportMonthlyReportCsv(yearMonth) {
   return generateCsv(headers, csvData);
 }
 
+/**
+ * Format Monthly Financial Report as clean, rich HTML
+ */
+function formatMonthlyReportHtml(summary) {
+  const currency = summary.currency;
+  let msg = `📑 <b>ወርሃዊ የፋይናንስ ሪፖርት / Monthly Financial Report</b>\n`;
+  msg += `🗓️ <b>የተዘጋጀበት ወር / Period:</b> ${formatDualMonth(summary.yearMonth)}\n\n`;
+
+  msg += `👥 <b>የአባላት አጠቃላይ ሁኔታ / Membership:</b>\n`;
+  msg += `• ጠቅላላ ተማሪዎች / Active: <b>${summary.activeMembersCount}</b>\n`;
+  msg += `• ሙሉ በሙሉ የከፈሉ / Fully Paid: <b>${summary.fullyPaidCount}</b> 🟢\n`;
+  msg += `• በከፊል የከፈሉ / Partially Paid: <b>${summary.partiallyPaidCount}</b> 🟡\n`;
+  msg += `• ያልከፈሉ / Unpaid: <b>${summary.unpaidCount}</b> 🔴\n\n`;
+
+  msg += `💰 <b>የገንዘብ አጠቃላይ መረጃ / Financial Overview:</b>\n`;
+  msg += `• የሚጠበቅ ጠቅላላ / Total Expected: <b>${formatMoney(summary.totalExpectedCents, currency)}</b>\n`;
+  msg += `• የተሰበሰበ እና የተረጋገጠ / Verified Collected: <b>${formatMoney(summary.totalCollectedCents, currency)}</b>\n`;
+  msg += `• ያልተሰበሰበ ቀሪ / Total Outstanding: <b>${formatMoney(summary.totalOutstandingCents, currency)}</b>\n\n`;
+
+  msg += `💳 <b>የክፍያ መንገዶች ዝርዝር / Collections by Method:</b>\n`;
+  if (!summary.methodBreakdown || summary.methodBreakdown.length === 0) {
+    msg += `• <i>ለዚህ ወር የተሰበሰበ ክፍያ የለም / No collections recorded yet.</i>\n`;
+  } else {
+    for (const mb of summary.methodBreakdown) {
+      msg += `• ${formatPaymentMethod(mb.payment_method)}: <b>${formatMoney(mb.total_cents, currency)}</b> (${mb.tx_count} ደረሰኞች/tx)\n`;
+    }
+  }
+
+  if (summary.reversals && summary.reversals.count > 0) {
+    msg += `\n🔄 <b>የተሰረዙ ክፍያዎች / Reversals:</b>\n`;
+    msg += `• የተመለሱ: <b>${summary.reversals.count}</b> (${formatMoney(summary.reversals.totalCents, currency)})\n`;
+  }
+
+  return msg;
+}
+
 module.exports = {
   getMonthlyReportSummary,
   getMonthlyMemberDetails,
   exportMonthlyReportCsv,
+  formatMonthlyReportHtml,
 };
+

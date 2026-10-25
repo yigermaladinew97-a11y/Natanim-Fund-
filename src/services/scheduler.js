@@ -3,9 +3,11 @@ const { config } = require('../config');
 const { sendMonthlyReminders } = require('./reminders');
 const { ensureMonthlyObligations } = require('./accounting');
 const { getCurrentYearMonth, isAcademicMonth } = require('../utils/formatters');
+const { postMonthlyReportToStaffGroup } = require('./staffArchive');
 
 let reminderTask = null;
 let rolloverTask = null;
+let reportTask = null;
 
 function initScheduler(bot) {
   // If already running, stop previous tasks to avoid duplicates on reload
@@ -69,6 +71,30 @@ function initScheduler(bot) {
   } else {
     console.warn(`[Scheduler Warning] Invalid cron expression: "${cronExpr}". Scheduled reminders disabled.`);
   }
+
+  // 3. Automated Monthly Financial Report Auto-Post to Staff Group
+  // Runs at 18:00 on the 28th of every month (Addis Ababa timezone)
+  try {
+    reportTask = cron.schedule('0 18 28 * *', async () => {
+      try {
+        const currentMonth = getCurrentYearMonth();
+        if (!isAcademicMonth(currentMonth)) {
+          console.log(`[Scheduler] Skipping monthly report for vacation month: ${currentMonth}`);
+          return;
+        }
+        console.log(`[Scheduler] Auto-posting monthly financial report for ${currentMonth} to staff group...`);
+        const res = await postMonthlyReportToStaffGroup(bot.telegram, currentMonth);
+        console.log(`[Scheduler] Monthly report auto-post result:`, res);
+      } catch (err) {
+        console.error('[Scheduler Error] Monthly report auto-post failed:', err.message);
+      }
+    }, {
+      timezone,
+    });
+    console.log(`[Scheduler] Monthly report auto-post scheduled (0 18 28 * *) in ${timezone}`);
+  } catch (err) {
+    console.error('[Scheduler] Failed to schedule monthly report task:', err.message);
+  }
 }
 
 function stopScheduler() {
@@ -79,6 +105,10 @@ function stopScheduler() {
   if (reminderTask) {
     reminderTask.stop();
     reminderTask = null;
+  }
+  if (reportTask) {
+    reportTask.stop();
+    reportTask = null;
   }
 }
 

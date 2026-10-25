@@ -9,6 +9,7 @@ const {
   getCurrentYearMonth,
 } = require('../utils/formatters');
 const { config } = require('../config');
+const { getMonthlyReportSummary, exportMonthlyReportCsv, formatMonthlyReportHtml } = require('./reporting');
 
 /**
  * Staff Archive Group & Forum Topic (Folder) Management Service
@@ -197,19 +198,51 @@ async function sendReportToStaffGroup(telegram, yearMonth, reportText, csvBuffer
   }
 
   try {
+    let sentMessage = null;
     if (reportText) {
-      await telegram.sendMessage(groupId, reportText, extra);
+      sentMessage = await telegram.sendMessage(groupId, reportText, extra);
     }
     if (csvBuffer && filename) {
-      await telegram.sendDocument(
-        groupId,
-        { source: csvBuffer, filename },
-        { ...extra, caption: `📊 Financial Statement Export for ${formatDualMonth(yearMonth)}` }
-      );
+      const caption = `📊 <b>Financial Statement Export for ${formatDualMonth(yearMonth)}</b>\n<i>RFC-4180 CSV Spreadsheet</i>`;
+      if (telegram.token && typeof fetch === 'function') {
+        const form = new FormData();
+        form.append('chat_id', String(groupId));
+        if (threadId) form.append('message_thread_id', String(threadId));
+        form.append('caption', caption);
+        form.append('parse_mode', 'HTML');
+        form.append('document', new Blob([csvBuffer], { type: 'text/csv' }), filename);
+
+        await fetch(`https://api.telegram.org/bot${telegram.token}/sendDocument`, {
+          method: 'POST',
+          body: form,
+        });
+      } else if (typeof telegram.sendDocument === 'function') {
+        await telegram.sendDocument(
+          groupId,
+          { source: csvBuffer, filename },
+          { ...extra, caption }
+        );
+      }
     }
+    return { success: true, threadId, sentMessage };
   } catch (err) {
     console.error(`[StaffArchive] Failed to send report to staff group:`, err.message);
+    return { success: false, error: err.message };
   }
+}
+
+/**
+ * Generate and dispatch the complete monthly financial summary and CSV export
+ * directly to the "📊 ወርሃዊ ሪፖርቶች" topic in the connected staff group.
+ */
+async function postMonthlyReportToStaffGroup(telegram, yearMonth) {
+  const targetMonth = yearMonth || getCurrentYearMonth();
+  const summary = getMonthlyReportSummary(targetMonth);
+  const reportText = formatMonthlyReportHtml(summary);
+  const csvBuffer = exportMonthlyReportCsv(targetMonth);
+  const filename = `Natanim_Fund_Report_${targetMonth}.csv`;
+
+  return await sendReportToStaffGroup(telegram, targetMonth, reportText, csvBuffer, filename);
 }
 
 module.exports = {
@@ -223,4 +256,6 @@ module.exports = {
   getReportsTopicName,
   forwardVerifiedReceiptToStaffGroup,
   sendReportToStaffGroup,
+  postMonthlyReportToStaffGroup,
 };
+

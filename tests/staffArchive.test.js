@@ -14,6 +14,7 @@ const {
   getReportsTopicName,
   forwardVerifiedReceiptToStaffGroup,
   sendReportToStaffGroup,
+  postMonthlyReportToStaffGroup,
 } = require('../src/services/staffArchive');
 
 test('Staff Archive Group & Forum Topic (Folder) Management Tests', async (t) => {
@@ -158,6 +159,31 @@ test('Staff Archive Group & Forum Topic (Folder) Management Tests', async (t) =>
     const reports = topics.find((t) => t.month === 'reports');
     assert.ok(reports);
     assert.ok(reports.name.includes('ሪፖርቶች'));
+  });
+
+  await t.test('7. postMonthlyReportToStaffGroup generates summary & CSV and sends to reports topic', async () => {
+    let sentMsg = null;
+    let sentDoc = null;
+    const mockTelegram = {
+      async createForumTopic(chatId, name) {
+        return { message_thread_id: 88 };
+      },
+      async sendMessage(chatId, text, extra) {
+        sentMsg = { chatId, text, extra };
+      },
+      async sendDocument(chatId, doc, extra) {
+        sentDoc = { chatId, doc, extra };
+      },
+    };
+
+    const res = await postMonthlyReportToStaffGroup(mockTelegram, '2026-10');
+    assert.ok(res.success);
+    assert.strictEqual(res.threadId, 99);
+    assert.ok(sentMsg);
+    assert.strictEqual(sentMsg.chatId, '-100987654321');
+    assert.ok(sentMsg.text.includes('ወርሃዊ የፋይናንስ ሪፖርት'));
+    assert.ok(sentDoc);
+    assert.strictEqual(sentDoc.doc.filename, 'Natanim_Fund_Report_2026-10.csv');
   });
 
   cleanup();

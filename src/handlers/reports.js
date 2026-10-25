@@ -14,35 +14,36 @@ const {
 } = require('../utils/formatters');
 const { isValidYearMonth } = require('../utils/validators');
 const { getPaginationKeyboard } = require('../utils/keyboards');
+const { postMonthlyReportToStaffGroup } = require('../services/staffArchive');
 
 function formatReportMessage(summary) {
   const currency = summary.currency;
   let msg = `📑 <b>Monthly Financial Report — ${formatDualMonth(summary.yearMonth)}</b>\n\n`;
 
-  msg += `👥 *Membership Statistics:*\n`;
-  msg += `• Active Members: *${summary.activeMembersCount}*\n`;
-  msg += `• Fully Paid: *${summary.fullyPaidCount}* 🟢\n`;
-  msg += `• Partially Paid: *${summary.partiallyPaidCount}* 🟡\n`;
-  msg += `• Unpaid / Overdue: *${summary.unpaidCount}* 🔴\n\n`;
+  msg += `👥 <b>Membership Statistics:</b>\n`;
+  msg += `• Active Members: <b>${summary.activeMembersCount}</b>\n`;
+  msg += `• Fully Paid: <b>${summary.fullyPaidCount}</b> 🟢\n`;
+  msg += `• Partially Paid: <b>${summary.partiallyPaidCount}</b> 🟡\n`;
+  msg += `• Unpaid / Overdue: <b>${summary.unpaidCount}</b> 🔴\n\n`;
 
-  msg += `💰 *Financial Overview:*\n`;
-  msg += `• Total Expected: *${formatMoney(summary.totalExpectedCents, currency)}*\n`;
-  msg += `• Total Verified Collected: *${formatMoney(summary.totalCollectedCents, currency)}*\n`;
-  msg += `• Total Outstanding: *${formatMoney(summary.totalOutstandingCents, currency)}*\n\n`;
+  msg += `💰 <b>Financial Overview:</b>\n`;
+  msg += `• Total Expected: <b>${formatMoney(summary.totalExpectedCents, currency)}</b>\n`;
+  msg += `• Total Verified Collected: <b>${formatMoney(summary.totalCollectedCents, currency)}</b>\n`;
+  msg += `• Total Outstanding: <b>${formatMoney(summary.totalOutstandingCents, currency)}</b>\n\n`;
 
-  msg += `💳 *Collections by Method:*\n`;
+  msg += `💳 <b>Collections by Method:</b>\n`;
   if (summary.methodBreakdown.length === 0) {
-    msg += `• _No payments collected for this month yet._\n`;
+    msg += `• <i>No payments collected for this month yet.</i>\n`;
   } else {
     for (const mb of summary.methodBreakdown) {
-      msg += `• ${formatPaymentMethod(mb.payment_method)}: *${formatMoney(mb.total_cents, currency)}* (${mb.tx_count} transactions)\n`;
+      msg += `• ${formatPaymentMethod(mb.payment_method)}: <b>${formatMoney(mb.total_cents, currency)}</b> (${mb.tx_count} transactions)\n`;
     }
   }
 
   if (summary.reversals.count > 0) {
-    msg += `\n🔄 *Reversed Transactions:*\n`;
-    msg += `• Reversed Payments: *${summary.reversals.count}* (${formatMoney(summary.reversals.totalCents, currency)})\n`;
-    msg += `  _(Excluded from verified collected total)_\n`;
+    msg += `\n🔄 <b>Reversed Transactions:</b>\n`;
+    msg += `• Reversed Payments: <b>${summary.reversals.count}</b> (${formatMoney(summary.reversals.totalCents, currency)})\n`;
+    msg += `  <i>(Excluded from verified collected total)</i>\n`;
   }
 
   return msg;
@@ -64,13 +65,54 @@ function registerReportHandlers(bot) {
         Markup.button.callback('👥 Member Breakdown', `report_breakdown_${month}_1`),
         Markup.button.callback('📁 Export CSV', `report_export_${month}`),
       ],
+      [
+        Markup.button.callback('📢 ሪፖርቱን ግሩፕ ላክ / Post to Staff Group', `report_post_group_${month}`),
+      ],
     ]);
 
-    await ctx.reply(text, { parse_mode: 'Markdown', ...keyboard });
+    await ctx.reply(text, { parse_mode: 'HTML', ...keyboard });
   }
 
   bot.command('report', requireStaff, handleReport);
   bot.hears(/^(?:📑\s*)?(?:Monthly Report|ወርሃዊ ሪፖርት)$/i, requireStaff, handleReport);
+
+  bot.command(['sendreport', 'postreport'], requireStaff, async (ctx) => {
+    const parts = ctx.message?.text?.trim().split(/\s+/).slice(1) || [];
+    let month = getCurrentYearMonth();
+    if (parts.length >= 1 && isValidYearMonth(parts[0])) {
+      month = parts[0];
+    }
+    await ctx.reply(`⏳ <b>Generating & posting report for ${formatDualMonth(month)} to 📊 ወርሃዊ ሪፖርቶች...</b>`, {
+      parse_mode: 'HTML',
+    });
+    const res = await postMonthlyReportToStaffGroup(ctx.telegram, month);
+    if (res && res.success) {
+      await ctx.reply(
+        `✅ <b>Monthly Financial Report & CSV successfully posted to 📊 ወርሃዊ ሪፖርቶች!</b>\n` +
+        `• <b>Period:</b> ${formatDualMonth(month)}\n` +
+        `• <b>Folder:</b> <code>#${res.threadId || 'General'}</code>`,
+        { parse_mode: 'HTML' }
+      );
+    } else {
+      await ctx.reply(`⚠️ Could not post to staff group: ${res?.error || 'Please connect group with /setstaffgroup first.'}`);
+    }
+  });
+
+  bot.action(/^report_post_group_(\d{4}-\d{2})$/, requireStaff, async (ctx) => {
+    const month = ctx.match[1];
+    await ctx.answerCbQuery('⏳ Posting report to Staff Group...');
+    const res = await postMonthlyReportToStaffGroup(ctx.telegram, month);
+    if (res && res.success) {
+      await ctx.reply(
+        `✅ <b>Monthly Financial Report & CSV have been posted to the staff archive group!</b>\n` +
+        `• <b>Folder:</b> <code>📊 ወርሃዊ ሪፖርቶች</code> (#${res.threadId || 'General'})\n` +
+        `• <b>Period:</b> ${formatDualMonth(month)}`,
+        { parse_mode: 'HTML' }
+      );
+    } else {
+      await ctx.reply(`⚠️ Failed to post report to staff group: ${res?.error || 'Group not connected. Run /setstaffgroup in your group first.'}`);
+    }
+  });
 
   bot.action('menu_report', requireStaff, async (ctx) => {
     await ctx.answerCbQuery();
