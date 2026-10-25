@@ -8,6 +8,9 @@
     "dev": "node --watch src/index.js",
     "test": "node --test tests/**/*.test.js"
   },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/yigermaladinew97-a11y/Natanim-Fund-.git"
