@@ -60,6 +60,7 @@ async function createDatabaseBackup(customDir) {
   // Perform atomic live online backup
   await db.backup(backupPath);
 
+  const fileBuffer = fs.readFileSync(backupPath);
   const stats = fs.statSync(backupPath);
   const sizeBytes = stats.size;
   const sizeFormatted = formatBytes(sizeBytes);
@@ -71,6 +72,7 @@ async function createDatabaseBackup(customDir) {
     success: true,
     backupPath,
     filename,
+    buffer: fileBuffer,
     sizeBytes,
     sizeFormatted,
   };

@@ -12,6 +12,7 @@ const { registerAdminHandlers } = require('./handlers/admin');
 const { registerPaymentHandlers } = require('./handlers/payments');
 const { registerReportHandlers } = require('./handlers/reports');
 const { registerReminderHandlers } = require('./handlers/reminders');
+const https = require('node:https');
 const { registerWizardHandler } = require('./handlers/wizard');
 const { registerBankInfoHandlers } = require('./handlers/bankInfo');
 const { registerBroadcastHandlers } = require('./handlers/broadcast');
@@ -23,8 +24,17 @@ async function createBot() {
   initDatabase();
   console.log(`[Database] SQLite connected at: ${config.databasePath}`);
 
-  // Create Telegraf Bot
-  const bot = new Telegraf(config.botToken);
+  // Create Telegraf Bot with keepAlive agent to prevent socket hang up on network jitter
+  const httpsAgent = new https.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 10000,
+  });
+
+  const bot = new Telegraf(config.botToken, {
+    telegram: {
+      agent: httpsAgent,
+    },
+  });
 
   // Catch unhandled errors
   bot.catch(errorHandler);

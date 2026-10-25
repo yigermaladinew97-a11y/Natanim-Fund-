@@ -968,21 +968,41 @@ function registerAdminHandlers(bot) {
     try {
       const backupResult = await createDatabaseBackup();
 
-      await ctx.replyWithDocument(
-        {
-          source: backupResult.backupPath,
-          filename: backupResult.filename,
-        },
-        {
-          caption:
-            `💾 <b>Natanim Fund Database Backup</b>\n\n` +
-            `• <b>File:</b> <code>${backupResult.filename}</code>\n` +
-            `• <b>Size:</b> ${backupResult.sizeFormatted}\n` +
-            `• <b>Date:</b> ${new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC\n\n` +
-            `<i>Keep this file secure. It contains complete member and transaction records.</i>`,
-          parse_mode: 'HTML',
+      let sent = false;
+      let lastErr = null;
+
+      // Retry up to 3 times in case of momentary Telegram socket hang up or network jitter
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await ctx.replyWithDocument(
+            {
+              source: backupResult.buffer,
+              filename: backupResult.filename,
+            },
+            {
+              caption:
+                `💾 <b>Natanim Fund Database Backup</b>\n\n` +
+                `• <b>File:</b> <code>${backupResult.filename}</code>\n` +
+                `• <b>Size:</b> ${backupResult.sizeFormatted}\n` +
+                `• <b>Date:</b> ${new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC\n\n` +
+                `<i>Keep this file secure. It contains complete member and transaction records.</i>`,
+              parse_mode: 'HTML',
+            }
+          );
+          sent = true;
+          break;
+        } catch (uploadErr) {
+          lastErr = uploadErr;
+          console.warn(`[Backup] Upload attempt ${attempt} failed: ${uploadErr.message}. Retrying...`);
+          if (attempt < 3) {
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+          }
         }
-      );
+      }
+
+      if (!sent) {
+        throw lastErr;
+      }
 
       if (statusMsg) {
         try {
@@ -990,8 +1010,8 @@ function registerAdminHandlers(bot) {
         } catch (_) {}
       }
     } catch (err) {
-      console.error('[Backup Error]:', err);
-      return ctx.reply(`❌ Failed to create database backup: ${err.message}`);
+      console.error('[Backup Error]:', err.message);
+      return ctx.reply(`❌ Failed to send database backup: ${err.message}`);
     }
   });
 }
