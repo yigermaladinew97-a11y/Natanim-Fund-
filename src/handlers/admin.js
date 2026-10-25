@@ -32,6 +32,8 @@ const {
   getMonthTopicKey,
   getMonthTopicName,
   getReportsTopicName,
+  inviteTreasurerToStaffGroup,
+  removeTreasurerFromStaffGroup,
 } = require('../services/staffArchive');
 
 function registerAdminHandlers(bot) {
@@ -541,34 +543,60 @@ function registerAdminHandlers(bot) {
   // /roles - Manage Treasurer roles
   // ==========================================
   async function notifyUserRoleChanged(telegram, targetId, newRole) {
-    try {
-      if (newRole === 'treasurer') {
+    const member = getMemberByTelegramId(targetId);
+    const memberName = member?.full_name || null;
+
+    if (newRole === 'treasurer') {
+      // 1. Generate exclusive single-use invite link to staff group & post welcome
+      const inviteLink = await inviteTreasurerToStaffGroup(telegram, targetId, memberName);
+
+      // 2. Prepare inline keyboard for DM with invite button if available
+      const inlineButtons = [];
+      if (inviteLink) {
+        inlineButtons.push([Markup.button.url('🏛️ Join Staff Group / ግሩፑን ተቀላቀል', inviteLink)]);
+      }
+
+      try {
         await telegram.sendMessage(
           targetId,
-          `🎉 <b>Role Updated!</b>\n\n` +
-          `You have been granted <b>Treasurer</b> privileges for Natanim Church Fund by an administrator.\n\n` +
-          `Your menu buttons below have been automatically updated. You now have access to staff tools like <b>Record Payment</b>, <b>Monthly Report</b>, <b>Members List</b>, and <b>Verify Receipts</b>!`,
+          `🎉 <b>Role Updated! / አዲስ ኃላፊነት ተሰጥቶዎታል!</b>\n\n` +
+          `You have been appointed as <b>Treasurer (ገንዘብ ያዥ)</b> for Natanim Church Fund by an administrator.\n\n` +
+          `• <b>Staff Tools:</b> Your menu buttons below have been automatically upgraded with full financial tools (Record Payment, Monthly Reports, Verify Receipts).\n` +
+          (inviteLink ? `• <b>Leadership Group:</b> Tap the button below to join the staff archive group!\n` : ''),
           {
             parse_mode: 'HTML',
+            ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
             ...getMainMenuKeyboard('treasurer'),
           }
         );
-      } else {
-        const member = getMemberByTelegramId(targetId);
-        const fallbackRole = member && member.status === 'active' ? 'member' : 'unregistered';
+      } catch (dmErr) {
+        console.warn(`[Roles] Could not send direct notification to user ${targetId}:`, dmErr.message);
+      }
+
+      return { inviteLink };
+    } else {
+      // 1. Automatically remove former treasurer from staff group & announce
+      const removalResult = await removeTreasurerFromStaffGroup(telegram, targetId, memberName);
+
+      // 2. DM former treasurer
+      const fallbackRole = member && member.status === 'active' ? 'member' : 'unregistered';
+      try {
         await telegram.sendMessage(
           targetId,
-          `ℹ️ <b>Staff Role Update</b>\n\n` +
+          `ℹ️ <b>Staff Role Update / የኃላፊነት ለውጥ</b>\n\n` +
           `Your Treasurer privileges for Natanim Church Fund have been removed by an administrator.\n\n` +
-          `Your menu buttons below have been updated back to regular member access.`,
+          `• Your menu buttons below have been returned to regular member access.\n` +
+          `• Your staff group membership has concluded.`,
           {
             parse_mode: 'HTML',
             ...getMainMenuKeyboard(fallbackRole),
           }
         );
+      } catch (dmErr) {
+        console.warn(`[Roles] Could not send direct notification to user ${targetId}:`, dmErr.message);
       }
-    } catch (dmErr) {
-      console.warn(`[Roles] Could not send direct notification to user ${targetId}:`, dmErr.message);
+
+      return { removalResult };
     }
   }
 
@@ -612,10 +640,11 @@ function registerAdminHandlers(bot) {
       if (subAction === 'add' || subAction === 'grant') {
         try {
           assignRole(targetId, 'treasurer', ctx.from.id);
-          await notifyUserRoleChanged(ctx.telegram, targetId, 'treasurer');
+          const notifyRes = await notifyUserRoleChanged(ctx.telegram, targetId, 'treasurer');
           return ctx.reply(
-            `✅ Successfully granted <b>Treasurer</b> role to Telegram ID <code>${escapeHtml(targetId)}</code>.\n` +
-            `Their menu keyboard has been automatically updated on their device!`,
+            `✅ Successfully granted <b>Treasurer</b> role to Telegram ID <code>${escapeHtml(targetId)}</code>.\n\n` +
+            `• Menu keyboard automatically upgraded on their device\n` +
+            (notifyRes.inviteLink ? `• One-time group invite link sent directly to their private chat\n• Welcome announcement posted in leadership group` : `• <i>(Tip: Link staff group with /setstaffgroup for automatic group invite)</i>`),
             { parse_mode: 'HTML' }
           );
         } catch (err) {
@@ -626,8 +655,10 @@ function registerAdminHandlers(bot) {
           revokeRole(targetId, ctx.from.id);
           await notifyUserRoleChanged(ctx.telegram, targetId, 'member');
           return ctx.reply(
-            `✅ Successfully revoked staff role from Telegram ID <code>${escapeHtml(targetId)}</code>.\n` +
-            `Their menu keyboard has been automatically updated on their device!`,
+            `✅ Successfully revoked staff role from Telegram ID <code>${escapeHtml(targetId)}</code>.\n\n` +
+            `• Menu keyboard returned to regular member access\n` +
+            `• Automatically removed from the leadership staff group\n` +
+            `• Staff group notified`,
             { parse_mode: 'HTML' }
           );
         } catch (err) {
@@ -672,8 +703,9 @@ function registerAdminHandlers(bot) {
       await notifyUserRoleChanged(ctx.telegram, targetId, 'member');
 
       await ctx.reply(
-        `✅ Successfully revoked Treasurer role from Telegram ID <code>${escapeHtml(targetId)}</code>.\n` +
-        `Their menu keyboard has been automatically updated.`,
+        `✅ Successfully revoked Treasurer role from Telegram ID <code>${escapeHtml(targetId)}</code>.\n\n` +
+        `• Automatically removed from the leadership staff group\n` +
+        `• Menu keyboard returned to regular member access`,
         { parse_mode: 'HTML' }
       );
 

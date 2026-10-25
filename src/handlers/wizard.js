@@ -34,6 +34,7 @@ const {
 const { getPaymentMethodKeyboard, getCancelKeyboard, getCancelReplyKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
 const { showPaymentConfirmation } = require('./payments');
 const { assignRole } = require('../services/permissions');
+const { inviteTreasurerToStaffGroup } = require('../services/staffArchive');
 
 const MENU_BUTTON_PATTERNS = [
   /^(?:📊\s*)?(?:My Status|ሁኔታዬ)$/i,
@@ -728,16 +729,25 @@ function registerWizardHandler(bot) {
       clearSession(userId);
       try {
         assignRole(targetId, 'treasurer', userId);
+        const member = getMemberById(targetId) || null;
+        const inviteLink = await inviteTreasurerToStaffGroup(ctx.telegram, targetId, member?.full_name);
 
-        // Automatically push updated keyboard to the new treasurer!
+        const inlineButtons = [];
+        if (inviteLink) {
+          inlineButtons.push([Markup.button.url('🏛️ Join Staff Group / ግሩፑን ተቀላቀል', inviteLink)]);
+        }
+
+        // Push updated keyboard & invite link to the new treasurer
         try {
           await ctx.telegram.sendMessage(
             targetId,
-            `🎉 <b>Role Updated!</b>\n\n` +
-            `You have been granted <b>Treasurer</b> privileges for Natanim Church Fund by an administrator.\n\n` +
-            `Your menu buttons below have been automatically updated. You now have access to staff tools like <b>Record Payment</b>, <b>Monthly Report</b>, <b>Members List</b>, and <b>Verify Receipts</b>!`,
+            `🎉 <b>Role Updated! / አዲስ ኃላፊነት ተሰጥቶዎታል!</b>\n\n` +
+            `You have been granted <b>Treasurer (ገንዘብ ያዥ)</b> privileges for Natanim Church Fund by an administrator.\n\n` +
+            `• <b>Staff Tools:</b> Your menu buttons below have been automatically upgraded with full financial tools (Record Payment, Monthly Report, Members List, Verify Receipts).\n` +
+            (inviteLink ? `• <b>Leadership Group:</b> Tap below to join the leadership staff group!\n` : ''),
             {
               parse_mode: 'HTML',
+              ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
               ...getMainMenuKeyboard('treasurer'),
             }
           );
@@ -746,8 +756,9 @@ function registerWizardHandler(bot) {
         }
 
         return ctx.reply(
-          `✅ Successfully granted <b>Treasurer</b> role to Telegram ID <code>${escapeHtml(targetId)}</code>.\n` +
-          `Their menu buttons have been automatically updated on their device!`,
+          `✅ Successfully granted <b>Treasurer</b> role to Telegram ID <code>${escapeHtml(targetId)}</code>.\n\n` +
+          `• Menu buttons automatically updated on their device\n` +
+          (inviteLink ? `• One-time group invite link sent directly to their private chat\n• Welcome announcement posted in leadership group` : `• <i>(Tip: Link staff group with /setstaffgroup for automatic group invite)</i>`),
           {
             parse_mode: 'HTML',
             ...getMainMenuKeyboard(ctx.state?.role),

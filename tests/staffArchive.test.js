@@ -15,6 +15,8 @@ const {
   forwardVerifiedReceiptToStaffGroup,
   sendReportToStaffGroup,
   postMonthlyReportToStaffGroup,
+  inviteTreasurerToStaffGroup,
+  removeTreasurerFromStaffGroup,
 } = require('../src/services/staffArchive');
 
 test('Staff Archive Group & Forum Topic (Folder) Management Tests', async (t) => {
@@ -184,6 +186,68 @@ test('Staff Archive Group & Forum Topic (Folder) Management Tests', async (t) =>
     assert.ok(sentMsg.text.includes('ወርሃዊ የፋይናንስ ሪፖርት'));
     assert.ok(sentDoc);
     assert.strictEqual(sentDoc.doc.filename, 'Natanim_Fund_Report_2026-10.csv');
+  });
+
+  await t.test('8. inviteTreasurerToStaffGroup creates 1-time invite link and announces in staff group', async () => {
+    let inviteCreated = null;
+    let announcementSent = null;
+
+    const mockTelegram = {
+      async createChatInviteLink(chatId, options) {
+        inviteCreated = { chatId, options };
+        return { invite_link: 'https://t.me/+AbCdEfGhIjK123' };
+      },
+      async sendMessage(chatId, text, extra) {
+        announcementSent = { chatId, text, extra };
+      },
+    };
+
+    const link = await inviteTreasurerToStaffGroup(mockTelegram, '11223344', 'Abebe Kebede');
+    assert.strictEqual(link, 'https://t.me/+AbCdEfGhIjK123');
+    assert.ok(inviteCreated);
+    assert.strictEqual(inviteCreated.chatId, '-100987654321');
+    assert.strictEqual(inviteCreated.options.member_limit, 1);
+    assert.ok(inviteCreated.options.name.includes('Abebe Kebede'));
+
+    assert.ok(announcementSent);
+    assert.strictEqual(announcementSent.chatId, '-100987654321');
+    assert.ok(announcementSent.text.includes('New Treasurer Appointed'));
+    assert.ok(announcementSent.text.includes('Abebe Kebede'));
+  });
+
+  await t.test('9. removeTreasurerFromStaffGroup kicks user (ban+unban) and announces departure', async () => {
+    let banned = null;
+    let unbanned = null;
+    let announcementSent = null;
+
+    const mockTelegram = {
+      async banChatMember(chatId, userId) {
+        banned = { chatId, userId };
+      },
+      async unbanChatMember(chatId, userId) {
+        unbanned = { chatId, userId };
+      },
+      async sendMessage(chatId, text, extra) {
+        announcementSent = { chatId, text, extra };
+      },
+    };
+
+    const res = await removeTreasurerFromStaffGroup(mockTelegram, '11223344', 'Abebe Kebede');
+    assert.strictEqual(res.success, true);
+    assert.strictEqual(res.removed, true);
+
+    assert.ok(banned);
+    assert.strictEqual(banned.chatId, '-100987654321');
+    assert.strictEqual(banned.userId, 11223344);
+
+    assert.ok(unbanned);
+    assert.strictEqual(unbanned.chatId, '-100987654321');
+    assert.strictEqual(unbanned.userId, 11223344);
+
+    assert.ok(announcementSent);
+    assert.strictEqual(announcementSent.chatId, '-100987654321');
+    assert.ok(announcementSent.text.includes('Staff Role Update'));
+    assert.ok(announcementSent.text.includes('Abebe Kebede'));
   });
 
   cleanup();

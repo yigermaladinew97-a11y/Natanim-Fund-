@@ -245,6 +245,75 @@ async function postMonthlyReportToStaffGroup(telegram, yearMonth) {
   return await sendReportToStaffGroup(telegram, targetMonth, reportText, csvBuffer, filename);
 }
 
+/**
+ * Generate an exclusive single-use invite link for a newly appointed Treasurer
+ * and post a welcome announcement in the leadership group.
+ */
+async function inviteTreasurerToStaffGroup(telegram, targetId, memberName) {
+  const groupId = getStaffGroupId();
+  if (!groupId || !telegram) return null;
+
+  let inviteLink = null;
+  try {
+    const linkObj = await telegram.createChatInviteLink(groupId, {
+      name: `Treasurer Invite - ${memberName || targetId}`,
+      member_limit: 1,
+    });
+    inviteLink = linkObj.invite_link;
+  } catch (err) {
+    console.warn(`[StaffArchive] Could not generate invite link for ${targetId}:`, err.message);
+  }
+
+  // Announce in staff group
+  try {
+    const displayName = memberName || `User ${targetId}`;
+    await telegram.sendMessage(
+      groupId,
+      `🤝 <b>አዲስ ገንዘብ ያዥ / New Treasurer Appointed!</b>\n\n` +
+      `Please welcome <b>${escapeHtml(displayName)}</b> to the fellowship leadership team as <b>Treasurer</b>! 🎉`,
+      { parse_mode: 'HTML' }
+    );
+  } catch (err) {
+    console.warn(`[StaffArchive] Could not send welcome announcement in group:`, err.message);
+  }
+
+  return inviteLink;
+}
+
+/**
+ * Automatically remove a former Treasurer from the leadership group when their role is revoked,
+ * and announce in the group.
+ */
+async function removeTreasurerFromStaffGroup(telegram, targetId, memberName) {
+  const groupId = getStaffGroupId();
+  if (!groupId || !telegram) return { success: false, reason: 'No staff group configured' };
+
+  let removed = false;
+  try {
+    // Standard Telegram kick: ban then unban so user is removed without being permanently banned
+    await telegram.banChatMember(groupId, Number(targetId));
+    await telegram.unbanChatMember(groupId, Number(targetId));
+    removed = true;
+  } catch (err) {
+    console.warn(`[StaffArchive] Could not ban/unban user ${targetId} from group ${groupId}:`, err.message);
+  }
+
+  // Announce in staff group
+  try {
+    const displayName = memberName || `User ${targetId}`;
+    await telegram.sendMessage(
+      groupId,
+      `ℹ️ <b>Staff Role Update</b>\n\n` +
+      `<b>${escapeHtml(displayName)}</b> is no longer a Treasurer and has been removed from the staff group.`,
+      { parse_mode: 'HTML' }
+    );
+  } catch (err) {
+    console.warn(`[StaffArchive] Could not send removal announcement in group:`, err.message);
+  }
+
+  return { success: true, removed };
+}
+
 module.exports = {
   getStaffGroupId,
   getStaffGroupDetails,
@@ -257,5 +326,7 @@ module.exports = {
   forwardVerifiedReceiptToStaffGroup,
   sendReportToStaffGroup,
   postMonthlyReportToStaffGroup,
+  inviteTreasurerToStaffGroup,
+  removeTreasurerFromStaffGroup,
 };
 
