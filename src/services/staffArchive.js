@@ -142,12 +142,20 @@ async function forwardVerifiedReceiptToStaffGroup(telegram, {
   txId,
 }) {
   const groupId = getStaffGroupId();
-  if (!groupId || !telegram) return null;
+  if (!groupId || !telegram) {
+    console.warn(`[StaffArchive] Cannot forward receipt: Staff archive group is not configured (groupId=${groupId})`);
+    return null;
+  }
 
   const topicKey = getMonthTopicKey(submission.year_month);
   const topicName = getMonthTopicName(submission.year_month);
 
-  const threadId = await getOrCreateTopic(telegram, groupId, topicKey, topicName, 0x6FB9F0);
+  let threadId = null;
+  try {
+    threadId = await getOrCreateTopic(telegram, groupId, topicKey, topicName, 0x6FB9F0);
+  } catch (topicErr) {
+    console.warn(`[StaffArchive] Topic lookup/creation skipped:`, topicErr.message);
+  }
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const caption =
@@ -170,14 +178,59 @@ async function forwardVerifiedReceiptToStaffGroup(telegram, {
     extra.message_thread_id = threadId;
   }
 
+  // Tier 1: Try sending as Photo with threadId (if in forum mode)
   try {
-    return await telegram.sendPhoto(groupId, submission.file_id, {
+    const res = await telegram.sendPhoto(groupId, submission.file_id, {
       ...extra,
       caption,
     });
-  } catch (err) {
-    console.error(`[StaffArchive] Failed to forward screenshot to staff group:`, err.message);
-    return null;
+    console.log(`[StaffArchive] Successfully forwarded receipt photo to staff group ${groupId} (threadId=${threadId || 'general'})`);
+    return res;
+  } catch (photoErr) {
+    console.warn(`[StaffArchive] sendPhoto with threadId=${threadId} failed: ${photoErr.message}`);
+
+    // Tier 2: If threadId failed (e.g. topic deleted or not a forum), try photo in general chat
+    if (threadId) {
+      try {
+        const res = await telegram.sendPhoto(groupId, submission.file_id, {
+          parse_mode: 'HTML',
+          caption,
+        });
+        console.log(`[StaffArchive] Forwarded receipt photo to staff group general chat ${groupId}`);
+        return res;
+      } catch (photoGenErr) {
+        console.warn(`[StaffArchive] sendPhoto without threadId failed: ${photoGenErr.message}`);
+      }
+    }
+
+    // Tier 3: If file_id is a document/PDF rather than a photo, try sendDocument
+    try {
+      const res = await telegram.sendDocument(groupId, submission.file_id, {
+        ...extra,
+        caption,
+      });
+      console.log(`[StaffArchive] Forwarded receipt document to staff group ${groupId}`);
+      return res;
+    } catch (docErr) {
+      console.warn(`[StaffArchive] sendDocument failed: ${docErr.message}`);
+    }
+
+    // Tier 4: Fallback to text message so leadership group NEVER misses the verified receipt notification
+    try {
+      const res = await telegram.sendMessage(groupId, caption, extra);
+      console.log(`[StaffArchive] Forwarded receipt text notification to staff group ${groupId}`);
+      return res;
+    } catch (msgErr) {
+      if (threadId) {
+        try {
+          const res = await telegram.sendMessage(groupId, caption, { parse_mode: 'HTML' });
+          console.log(`[StaffArchive] Forwarded receipt text to staff group general chat ${groupId}`);
+          return res;
+        } catch (_) {}
+      }
+      console.error(`[StaffArchive] Failed to notify staff group completely:`, msgErr.message);
+      return null;
+    }
   }
 }
 

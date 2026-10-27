@@ -848,31 +848,56 @@ function registerAdminHandlers(bot) {
       });
     }
 
-    if (ctx.chat.type === 'private') {
+    const text = (ctx.message?.text || '').trim();
+    const parts = text.split(/\s+/).slice(1);
+
+    let chatId = ctx.chat.type !== 'private' ? ctx.chat.id : null;
+    let chatTitle = ctx.chat.title || 'Fellowship Staff Group';
+    let isForum = Boolean(ctx.chat.is_forum);
+
+    // If an argument is provided: /setstaffgroup <groupId>
+    if (parts.length > 0 && /^-?\d+$/.test(parts[0])) {
+      chatId = parts[0];
+      try {
+        const chatInfo = await ctx.telegram.getChat(chatId);
+        chatTitle = chatInfo.title || chatTitle;
+        isForum = Boolean(chatInfo.is_forum);
+      } catch (chatErr) {
+        console.warn(`[StaffArchive] Could not fetch chat info for ${chatId}:`, chatErr.message);
+      }
+    }
+
+    if (!chatId) {
       return ctx.reply(
         'ℹ️ <b>Connect Staff Group</b>\n\n' +
-        'Please add this bot to your leadership/staff Telegram group, make it an administrator, and send <code>/setstaffgroup</code> <b>inside that group</b>!',
+        'You can connect your staff archive group in one of two ways:\n\n' +
+        '1. <b>Inside the Group:</b>\n' +
+        '• Add this bot to your leadership group as an <b>Administrator</b>.\n' +
+        '• Send <code>/setstaffgroup</code> inside that group.\n\n' +
+        '2. <b>Directly in Private Chat:</b>\n' +
+        '• Send <code>/setstaffgroup &lt;group_id&gt;</code> (e.g. <code>/setstaffgroup -100123456789</code>).\n\n' +
+        '<i>Tip: After connecting, run /teststaffgroup to verify connectivity!</i>',
         { parse_mode: 'HTML' }
       );
     }
-
-    const chatId = ctx.chat.id;
-    const chatTitle = ctx.chat.title || 'Fellowship Staff Group';
-    const isForum = Boolean(ctx.chat.is_forum);
 
     setStaffGroupId(chatId, chatTitle, senderId);
 
     let topicNotice = '';
     if (isForum) {
-      const topics = await initializeAcademicYearTopics(ctx.telegram, chatId);
-      const monthTopics = topics.filter((t) => t.month !== 'reports');
-      const reportsTopic = topics.find((t) => t.month === 'reports');
+      try {
+        const topics = await initializeAcademicYearTopics(ctx.telegram, chatId);
+        const monthTopics = topics.filter((t) => t.month !== 'reports');
+        const reportsTopic = topics.find((t) => t.month === 'reports');
 
-      topicNotice =
-        `\n\n📁 <b>Academic Year Month Folders Initialized (${monthTopics.length} Months):</b>\n` +
-        monthTopics.map((t) => `• <b>${escapeHtml(t.name)}</b>`).join('\n') +
-        (reportsTopic ? `\n• <b>${escapeHtml(reportsTopic.name)}</b>` : '') +
-        `\n\n<i>As administrators approve payment screenshots, verified receipts will be posted directly into their respective month folders!</i>`;
+        topicNotice =
+          `\n\n📁 <b>Academic Year Month Folders Initialized (${monthTopics.length} Months):</b>\n` +
+          monthTopics.map((t) => `• <b>${escapeHtml(t.name)}</b>`).join('\n') +
+          (reportsTopic ? `\n• <b>${escapeHtml(reportsTopic.name)}</b>` : '') +
+          `\n\n<i>As administrators approve payment screenshots, verified receipts will be posted directly into their respective month folders!</i>`;
+      } catch (topErr) {
+        topicNotice = `\n\n⚠️ <i>Note on topics: ${escapeHtml(topErr.message)}</i>`;
+      }
     } else {
       topicNotice =
         `\n\n💡 <b>Tip to enable Month Folders:</b>\n` +
@@ -885,7 +910,8 @@ function registerAdminHandlers(bot) {
       `🎉 <b>Staff Archive Group Successfully Connected!</b>\n\n` +
       `• <b>Group Name:</b> ${escapeHtml(chatTitle)}\n` +
       `• <b>Group ID:</b> <code>${chatId}</code>\n` +
-      `• <b>Topics (Folders) Mode:</b> ${isForum ? '✅ Active' : '⚪ Standard Group'}` +
+      `• <b>Topics (Folders) Mode:</b> ${isForum ? '✅ Active' : '⚪ Standard Group'}\n\n` +
+      `Send <code>/teststaffgroup</code> to verify that the bot can post into the group.` +
       topicNotice,
       {
         parse_mode: 'HTML',
@@ -931,7 +957,7 @@ function registerAdminHandlers(bot) {
     if (!details.groupId) {
       return ctx.reply(
         '⚠️ <b>Staff Group Not Connected</b>\n\n' +
-        'Please add the bot to your leadership group and send <code>/setstaffgroup</code> in that group.',
+        'Please add the bot to your leadership group as an administrator and send <code>/setstaffgroup</code> in that group (or send <code>/setstaffgroup &lt;group_id&gt;</code> here).',
         { parse_mode: 'HTML' }
       );
     }
@@ -939,9 +965,42 @@ function registerAdminHandlers(bot) {
       `🏛️ <b>Connected Staff Archive Group:</b>\n\n` +
       `• <b>Title:</b> ${escapeHtml(details.groupTitle)}\n` +
       `• <b>Group ID:</b> <code>${details.groupId}</code>\n` +
-      `• <b>Status:</b> Ready to archive verified screenshots and reports.`,
+      `• <b>Status:</b> Ready to archive verified screenshots and reports.\n\n` +
+      `💡 <i>Send /teststaffgroup to verify posting rights!</i>`,
       { parse_mode: 'HTML' }
     );
+  });
+
+  bot.command('teststaffgroup', async (ctx) => {
+    const senderId = String(ctx.from?.id || '');
+    if (!isAdmin(senderId)) {
+      return ctx.reply('⛔ Only fellowship administrators can test staff group connectivity.');
+    }
+    const details = getStaffGroupDetails();
+    if (!details.groupId) {
+      return ctx.reply('⚠️ Staff group is not connected yet. Please run /setstaffgroup first.');
+    }
+
+    try {
+      await ctx.telegram.sendMessage(
+        details.groupId,
+        `🔔 <b>Test Notification from Natanim Fund Bot</b>\n\n` +
+        `Staff Archive Group connection verified successfully by <a href="tg://user?id=${senderId}">${escapeHtml(ctx.from?.first_name || 'Admin')}</a>.\n` +
+        `Verified payment receipts and monthly reports will be archived here automatically.`,
+        { parse_mode: 'HTML' }
+      );
+      return ctx.reply(`✅ <b>Success!</b> A test message was posted to <b>${escapeHtml(details.groupTitle)}</b> (<code>${details.groupId}</code>). The bot is ready to archive receipts!`, {
+        parse_mode: 'HTML',
+      });
+    } catch (testErr) {
+      return ctx.reply(
+        `❌ <b>Failed to post into staff group:</b>\n\n<code>${escapeHtml(testErr.message)}</code>\n\n` +
+        `<b>How to fix:</b>\n` +
+        `1. Make sure the bot is added to the group.\n` +
+        `2. Make sure the bot is promoted to <b>Administrator</b> in the group with permission to send messages and photos.`,
+        { parse_mode: 'HTML' }
+      );
+    }
   });
 
   // ==========================================

@@ -25,6 +25,7 @@ const config = {
   timezone: process.env.TIMEZONE || 'Africa/Addis_Ababa',
   reminderCronSchedule: process.env.REMINDER_CRON_SCHEDULE || '0 9 5 * *',
   reminderCooldownHours: getEnvNumber('REMINDER_COOLDOWN_HOURS', 72),
+  staffGroupId: process.env.STAFF_GROUP_ID ? String(process.env.STAFF_GROUP_ID).trim() : '',
 };
 
 function validateConfig() {
