@@ -24,6 +24,7 @@ const {
 const { getPaymentMethodKeyboard, getCancelKeyboard, getConfirmationKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
 const { forwardVerifiedReceiptToStaffGroup } = require('../services/staffArchive');
 const { isTursoConfigured, pushToTurso } = require('../services/tursoService');
+const { setSession, getSession, clearSession } = require('../utils/session');
 
 function startPaymentWizard(ctx) {
   const members = getAllActiveMembers();
