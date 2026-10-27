@@ -59,6 +59,31 @@ async function createBot() {
 }
 
 async function main() {
+  // Start minimal HTTP health check server immediately for cloud platforms (Render, Koyeb, etc.)
+  const http = require('node:http');
+  const port = process.env.PORT || 3000;
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'ok',
+      service: 'Natanim Fund Telegram Bot',
+      uptime: process.uptime(),
+      tursoConfigured: isTursoConfigured(),
+    }));
+  });
+  server.listen(port, '0.0.0.0', () => {
+    console.log(`[HTTP] Health check server listening on 0.0.0.0:${port}`);
+  });
+
+  // Process Crash Guards for 24/7 Production Stability
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Process CrashGuard] Unhandled Rejection:', reason);
+  });
+
+  process.on('uncaughtException', (err) => {
+    console.error('[Process CrashGuard] Uncaught Exception:', err.message, err.stack);
+  });
+
   try {
     const bot = await createBot();
 
@@ -98,26 +123,6 @@ async function main() {
     } catch (cmdErr) {
       console.warn('[Bot] Note: Could not set Telegram menu commands:', cmdErr.message);
     }
-
-    // Process Crash Guards for 24/7 Production Stability
-    process.on('unhandledRejection', (reason, promise) => {
-      console.error('[Process CrashGuard] Unhandled Rejection:', reason);
-    });
-
-    process.on('uncaughtException', (err) => {
-      console.error('[Process CrashGuard] Uncaught Exception:', err.message, err.stack);
-    });
-
-    // Start minimal HTTP health check server for cloud platforms (Render, Koyeb, etc.)
-    const http = require('node:http');
-    const port = process.env.PORT || 3000;
-    const server = http.createServer((req, res) => {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok', service: 'Natanim Fund Telegram Bot', uptime: process.uptime() }));
-    });
-    server.listen(port, '0.0.0.0', () => {
-      console.log(`[HTTP] Health check server listening on 0.0.0.0:${port}`);
-    });
 
     // Start Telegram polling
     console.log('[Bot] Launching Natanim Fund Telegram bot (long polling)...');
