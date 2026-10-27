@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { initDatabase, closeDatabase } = require('../src/db');
-const { createDatabaseBackup, formatBytes, pruneOldBackups } = require('../src/services/backupService');
+const { createDatabaseBackup, formatBytes, pruneOldBackups, restoreDatabaseFromBuffer } = require('../src/services/backupService');
 const { getSystemDiagnostics, formatDiagnosticsHtml, formatUptime } = require('../src/services/diagnosticsService');
 const { registerMember } = require('../src/services/memberService');
 const { setStaffGroupId } = require('../src/services/staffArchive');
@@ -82,6 +82,21 @@ test('Pre-Launch System Health, Backup & Diagnostics Tests', async (t) => {
     assert.ok(html.includes('Database Size'));
     assert.ok(html.includes('Prelaunch Leadership Staff'));
     assert.ok(html.includes('Active & Operational'));
+  });
+
+  await t.test('6. restoreDatabaseFromBuffer restores valid SQLite snapshot and rejects invalid buffer', async () => {
+    const backupRes = await createDatabaseBackup(backupTestDir);
+    const validBuffer = fs.readFileSync(backupRes.backupPath);
+
+    // Test rejection of non-SQLite file
+    assert.throws(() => {
+      restoreDatabaseFromBuffer(Buffer.from('not an sqlite database'));
+    }, /not a valid SQLite database/);
+
+    // Test successful restore
+    const restoreResult = restoreDatabaseFromBuffer(validBuffer, testDbPath);
+    assert.strictEqual(restoreResult.success, true);
+    assert.ok(restoreResult.memberCount >= 1);
   });
 
   cleanup();

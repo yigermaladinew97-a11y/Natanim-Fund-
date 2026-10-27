@@ -115,9 +115,58 @@ async function sendDatabaseBackupToChat(botToken, chatId) {
   };
 }
 
+/**
+ * Restores the SQLite database from a provided Buffer.
+ * Safely closes active connection, replaces the DB file, and re-initializes.
+ */
+function restoreDatabaseFromBuffer(buffer, customPath) {
+  // Validate SQLite header: "SQLite format 3\0" (16 bytes)
+  const header = buffer.subarray(0, 16).toString('utf-8');
+  if (!header.startsWith('SQLite format 3')) {
+    throw new Error('Invalid file format: The uploaded file is not a valid SQLite database.');
+  }
+
+  const targetPath = customPath || config.databasePath;
+  const { closeDatabase, initDatabase } = require('../db');
+
+  // 1. Close existing connection
+  closeDatabase();
+
+  // 2. Ensure directory exists and clean any stale journal/WAL files
+  const dir = path.dirname(targetPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  if (fs.existsSync(`${targetPath}-wal`)) {
+    try { fs.unlinkSync(`${targetPath}-wal`); } catch (_) {}
+  }
+  if (fs.existsSync(`${targetPath}-shm`)) {
+    try { fs.unlinkSync(`${targetPath}-shm`); } catch (_) {}
+  }
+
+  fs.writeFileSync(targetPath, buffer);
+
+  // 3. Re-initialize database
+  const newDb = initDatabase(targetPath);
+
+  // 4. Gather summary statistics to verify data
+  const memberCount = newDb.prepare("SELECT COUNT(*) AS count FROM members WHERE status = 'active'").get().count;
+  const paymentCount = newDb.prepare("SELECT COUNT(*) AS count FROM payments WHERE is_reversed = 0").get().count;
+  const staffGroupRow = newDb.prepare("SELECT value FROM settings WHERE key = 'staff_group_title'").get();
+
+  return {
+    success: true,
+    memberCount,
+    paymentCount,
+    staffGroupTitle: staffGroupRow ? staffGroupRow.value : 'None',
+  };
+}
+
 module.exports = {
   createDatabaseBackup,
   sendDatabaseBackupToChat,
+  restoreDatabaseFromBuffer,
   formatBytes,
   pruneOldBackups,
 };

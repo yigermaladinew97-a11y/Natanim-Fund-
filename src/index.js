@@ -76,6 +76,7 @@ async function main() {
         { command: 'setstaffgroup', description: 'Connect Telegram Staff Archive Group (Admin)' },
         { command: 'diagnostics', description: 'System health & operational diagnostics (Admin)' },
         { command: 'backup', description: 'Download live SQLite database backup (Admin)' },
+        { command: 'restore', description: 'Restore SQLite database backup (Admin)' },
         { command: 'addmember', description: 'Register new member (Admin backup)' },
         { command: 'calendar', description: 'View current Ethiopian Calendar (ዓ.ም.) date' },
         { command: 'help', description: 'Show all bot commands and guide' },

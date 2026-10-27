@@ -91,13 +91,13 @@ function registerPaymentHandlers(bot) {
       }
 
       const caption =
-        `👤 *${sub.full_name}* (#${sub.member_id})\n` +
-        `• *Period:* ${periodDisplay}\n` +
-        `• *Months:* ${monthsCount} Month${monthsCount > 1 ? 's' : ''}\n` +
-        `• *Amount:* *${formatMoney(sub.amount_cents, currency)}*\n` +
-        `• *Method:* ${formatPaymentMethod(sub.payment_method)}\n` +
-        `• *Ref / Tx:* ${sub.reference_number || 'None'}\n` +
-        `• *Submitted:* ${sub.created_at}`;
+        `👤 <b>${escapeHtml(sub.full_name)}</b> (#${sub.member_id})\n` +
+        `• <b>Period:</b> ${escapeHtml(periodDisplay)}\n` +
+        `• <b>Months:</b> ${monthsCount} Month${monthsCount > 1 ? 's' : ''}\n` +
+        `• <b>Amount:</b> <b>${escapeHtml(formatMoney(sub.amount_cents, currency))}</b>\n` +
+        `• <b>Method:</b> ${escapeHtml(formatPaymentMethod(sub.payment_method))}\n` +
+        `• <b>Ref / Tx:</b> <code>${escapeHtml(sub.reference_number || 'None')}</code>\n` +
+        `• <b>Submitted:</b> ${escapeHtml(sub.created_at)}`;
 
       const keyboard = Markup.inlineKeyboard([
         [
@@ -109,14 +109,24 @@ function registerPaymentHandlers(bot) {
       try {
         await ctx.replyWithPhoto(sub.file_id, {
           caption,
-          parse_mode: 'Markdown',
+          parse_mode: 'HTML',
           ...keyboard,
         });
-      } catch (_) {
-        await ctx.reply(caption, {
-          parse_mode: 'Markdown',
-          ...keyboard,
-        });
+      } catch (photoErr) {
+        // Fallback 1: if uploaded as document/PDF
+        try {
+          await ctx.replyWithDocument(sub.file_id, {
+            caption,
+            parse_mode: 'HTML',
+            ...keyboard,
+          });
+        } catch (_) {
+          // Fallback 2: text message with action buttons
+          await ctx.reply(caption, {
+            parse_mode: 'HTML',
+            ...keyboard,
+          });
+        }
       }
     }
   }
@@ -233,7 +243,11 @@ function registerPaymentHandlers(bot) {
       try {
         await ctx.editMessageCaption(caption, { parse_mode: 'HTML' });
       } catch (_) {
-        await ctx.reply(caption, { parse_mode: 'HTML' });
+        try {
+          await ctx.editMessageText(caption, { parse_mode: 'HTML' });
+        } catch (_) {
+          await ctx.reply(caption, { parse_mode: 'HTML' });
+        }
       }
 
       // Send official digital receipt message to member

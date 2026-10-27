@@ -672,7 +672,7 @@ function approvePaymentSubmission(submissionId, reviewerTelegramId, monthsCount 
       });
       payment = single.payment;
       obligation = single.obligation;
-      monthsCovered = [single.payment.year_month];
+      monthsCovered = [sub.year_month];
       txId = single.payment.tx_id;
     }
 

@@ -35,7 +35,7 @@ const {
   inviteTreasurerToStaffGroup,
   removeTreasurerFromStaffGroup,
 } = require('../services/staffArchive');
-const { createDatabaseBackup, sendDatabaseBackupToChat } = require('../services/backupService');
+const { createDatabaseBackup, sendDatabaseBackupToChat, restoreDatabaseFromBuffer } = require('../services/backupService');
 const { getSystemDiagnostics, formatDiagnosticsHtml } = require('../services/diagnosticsService');
 const { config } = require('../config');
 
@@ -1036,6 +1036,73 @@ function registerAdminHandlers(bot) {
     } catch (err) {
       console.error('[Backup Error]:', err.message);
       return ctx.reply(`❌ Failed to send database backup: ${err.message}`);
+    }
+  });
+
+  // ==========================================
+  // /restore - Restore SQLite Database Backup
+  // ==========================================
+  bot.command('restore', requireAdmin, async (ctx) => {
+    return ctx.reply(
+      '📥 <b>Restore SQLite Database Backup</b>\n\n' +
+      'To restore your database, simply <b>send or forward</b> your <code>.db</code> backup file (e.g. from /backup) directly to this chat.\n\n' +
+      '⚠️ <i>Warning: Restoring will overwrite the active database with the uploaded backup file.</i>',
+      { parse_mode: 'HTML' }
+    );
+  });
+
+  // Listener for .db database backup files sent by Administrators
+  bot.on('document', async (ctx, next) => {
+    const doc = ctx.message?.document;
+    if (!doc || !doc.file_name?.endsWith('.db')) {
+      return next();
+    }
+
+    const senderId = String(ctx.from?.id || '');
+    if (!isAdmin(senderId)) {
+      return next();
+    }
+
+    let statusMsg = null;
+    try {
+      statusMsg = await ctx.reply('⏳ <i>Downloading and verifying database backup file...</i>', { parse_mode: 'HTML' });
+
+      // 1. Get file download link from Telegram
+      const link = await ctx.telegram.getFileLink(doc.file_id);
+      const res = await fetch(link.href);
+      if (!res.ok) {
+        throw new Error(`Failed to download backup file from Telegram: ${res.statusText}`);
+      }
+
+      const arrayBuffer = await res.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      // 2. Perform restoration and validation
+      const result = restoreDatabaseFromBuffer(buffer);
+
+      if (statusMsg) {
+        try {
+          await ctx.deleteMessage(statusMsg.message_id);
+        } catch (_) {}
+      }
+
+      return ctx.reply(
+        `🎉 <b>Database Successfully Restored!</b>\n\n` +
+        `• <b>File Restored:</b> <code>${escapeHtml(doc.file_name)}</code>\n` +
+        `• <b>Active Members:</b> ${result.memberCount}\n` +
+        `• <b>Recorded Payments:</b> ${result.paymentCount}\n` +
+        `• <b>Staff Archive Group:</b> ${escapeHtml(result.staffGroupTitle)}\n\n` +
+        `✅ All member accounts, obligations, and histories are online and verified!`,
+        { parse_mode: 'HTML' }
+      );
+    } catch (err) {
+      console.error('[Restore Error]:', err.message);
+      if (statusMsg) {
+        try {
+          await ctx.deleteMessage(statusMsg.message_id);
+        } catch (_) {}
+      }
+      return ctx.reply(`❌ <b>Database Restore Failed:</b>\n\n<code>${escapeHtml(err.message)}</code>`, { parse_mode: 'HTML' });
     }
   });
 }
