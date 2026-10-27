@@ -4,10 +4,12 @@ const { sendMonthlyReminders } = require('./reminders');
 const { ensureMonthlyObligations } = require('./accounting');
 const { getCurrentYearMonth, isAcademicMonth } = require('../utils/formatters');
 const { postMonthlyReportToStaffGroup } = require('./staffArchive');
+const { isTursoConfigured, pushToTurso } = require('./tursoService');
 
 let reminderTask = null;
 let rolloverTask = null;
 let reportTask = null;
+let tursoSyncTask = null;
 
 function initScheduler(bot) {
   // If already running, stop previous tasks to avoid duplicates on reload
@@ -95,6 +97,26 @@ function initScheduler(bot) {
   } catch (err) {
     console.error('[Scheduler] Failed to schedule monthly report task:', err.message);
   }
+
+  // 4. Automated Turso Cloud Database Backup Sync
+  // Runs every 5 minutes if Turso is configured
+  if (isTursoConfigured()) {
+    try {
+      tursoSyncTask = cron.schedule('*/5 * * * *', async () => {
+        try {
+          const res = await pushToTurso();
+          if (res.synced) {
+            console.log(`[Turso] Automated 5-min cloud sync: ${res.totalRowsPushed} rows backed up.`);
+          }
+        } catch (err) {
+          console.warn('[Turso] Automated periodic sync warning:', err.message);
+        }
+      });
+      console.log('[Scheduler] Turso cloud backup sync task scheduled (every 5 minutes)');
+    } catch (err) {
+      console.error('[Scheduler] Failed to schedule Turso sync task:', err.message);
+    }
+  }
 }
 
 function stopScheduler() {
@@ -109,6 +131,10 @@ function stopScheduler() {
   if (reportTask) {
     reportTask.stop();
     reportTask = null;
+  }
+  if (tursoSyncTask) {
+    tursoSyncTask.stop();
+    tursoSyncTask = null;
   }
 }
 

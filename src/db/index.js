@@ -17,10 +17,31 @@ function initDatabase(customPath) {
     }
   }
 
-  const db = new Database(dbPath);
-
-  // Execute schema creation
-  db.exec(SCHEMA_SQL);
+  let db;
+  try {
+    db = new Database(dbPath);
+    // Execute schema creation
+    db.exec(SCHEMA_SQL);
+  } catch (err) {
+    if ((err.code === 'SQLITE_CORRUPT' || err.message?.includes('malformed')) && dbPath !== ':memory:') {
+      console.warn(`[Database] Detected corrupted SQLite database at ${dbPath}. Resetting local copy...`);
+      try {
+        if (db && db.open) db.close();
+      } catch (_) {}
+      try {
+        const corruptBackup = `${dbPath}.corrupt.${Date.now()}`;
+        if (fs.existsSync(dbPath)) fs.renameSync(dbPath, corruptBackup);
+        if (fs.existsSync(`${dbPath}-wal`)) fs.unlinkSync(`${dbPath}-wal`);
+        if (fs.existsSync(`${dbPath}-shm`)) fs.unlinkSync(`${dbPath}-shm`);
+      } catch (rmErr) {
+        console.error('[Database] Failed to clear corrupt db files:', rmErr.message);
+      }
+      db = new Database(dbPath);
+      db.exec(SCHEMA_SQL);
+    } else {
+      throw err;
+    }
+  }
 
   // Auto-migration for existing databases
   try {
@@ -95,8 +116,26 @@ function getDatabase() {
   return dbInstance;
 }
 
+function syncDatabase() {
+  if (dbInstance && typeof dbInstance.sync === 'function') {
+    try {
+      dbInstance.sync();
+      return true;
+    } catch (err) {
+      console.warn('[Database] Turso sync notice:', err.message);
+      return false;
+    }
+  }
+  return false;
+}
+
 function closeDatabase() {
   if (dbInstance && dbInstance.open) {
+    try {
+      if (typeof dbInstance.sync === 'function') {
+        dbInstance.sync();
+      }
+    } catch (_) {}
     dbInstance.close();
     dbInstance = null;
   }
@@ -106,5 +145,6 @@ module.exports = {
   initDatabase,
   getDatabase,
   closeDatabase,
+  syncDatabase,
 };
 

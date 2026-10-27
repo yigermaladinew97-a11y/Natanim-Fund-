@@ -23,6 +23,7 @@ const {
 } = require('../utils/formatters');
 const { getPaymentMethodKeyboard, getCancelKeyboard, getConfirmationKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
 const { forwardVerifiedReceiptToStaffGroup } = require('../services/staffArchive');
+const { isTursoConfigured, pushToTurso } = require('../services/tursoService');
 
 function startPaymentWizard(ctx) {
   const members = getAllActiveMembers();
@@ -294,6 +295,11 @@ function registerPaymentHandlers(bot) {
       } catch (archiveErr) {
         console.warn('[StaffArchive] Could not auto-archive to staff group:', archiveErr.message);
       }
+
+      // Async cloud persistence push
+      if (isTursoConfigured()) {
+        pushToTurso().catch((e) => console.warn('[Turso] Async payment approval push notice:', e.message));
+      }
     } catch (err) {
       return ctx.reply(`⚠️ ${err.message}`);
     }
@@ -332,6 +338,11 @@ function registerPaymentHandlers(bot) {
           { parse_mode: 'HTML' }
         );
       } catch (_) {}
+
+      // Async cloud persistence push
+      if (isTursoConfigured()) {
+        pushToTurso().catch((e) => console.warn('[Turso] Async payment reject push notice:', e.message));
+      }
     } catch (err) {
       return ctx.reply(`⚠️ ${err.message}`);
     }
@@ -564,6 +575,11 @@ function registerPaymentHandlers(bot) {
 
           await ctx.telegram.sendMessage(result.member.telegram_id, receiptMsg, { parse_mode: 'HTML' });
         } catch (_) {}
+      }
+
+      // Async cloud persistence push
+      if (isTursoConfigured()) {
+        pushToTurso().catch((e) => console.warn('[Turso] Async payment record push notice:', e.message));
       }
     } catch (err) {
       return ctx.reply(`❌ Payment recording failed: ${err.message}`);

@@ -26,6 +26,8 @@ const config = {
   reminderCronSchedule: process.env.REMINDER_CRON_SCHEDULE || '0 9 5 * *',
   reminderCooldownHours: getEnvNumber('REMINDER_COOLDOWN_HOURS', 72),
   staffGroupId: process.env.STAFF_GROUP_ID ? String(process.env.STAFF_GROUP_ID).trim() : '',
+  tursoDatabaseUrl: process.env.TURSO_DATABASE_URL ? String(process.env.TURSO_DATABASE_URL).trim() : '',
+  tursoAuthToken: process.env.TURSO_AUTH_TOKEN ? String(process.env.TURSO_AUTH_TOKEN).trim() : '',
 };
 
 function validateConfig() {

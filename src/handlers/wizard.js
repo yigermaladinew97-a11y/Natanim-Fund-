@@ -35,6 +35,7 @@ const { getPaymentMethodKeyboard, getCancelKeyboard, getCancelReplyKeyboard, get
 const { showPaymentConfirmation } = require('./payments');
 const { assignRole } = require('../services/permissions');
 const { inviteTreasurerToStaffGroup } = require('../services/staffArchive');
+const { isTursoConfigured, pushToTurso } = require('../services/tursoService');
 
 const MENU_BUTTON_PATTERNS = [
   /^(?:📊\s*)?(?:My Status|ሁኔታዬ)$/i,
@@ -95,6 +96,11 @@ function registerWizardHandler(bot) {
         await notifyAdminsNewRegistration(ctx.telegram, request);
       } catch (adminErr) {
         console.warn('[Registration] Failed to notify admins:', adminErr.message);
+      }
+
+      // Async cloud persistence push
+      if (isTursoConfigured()) {
+        pushToTurso().catch((e) => console.warn('[Turso] Async registration push notice:', e.message));
       }
     } catch (err) {
       return ctx.reply(`❌ Registration submission failed: ${err.message}`, getMainMenuKeyboard('unregistered'));
@@ -249,6 +255,11 @@ function registerWizardHandler(bot) {
         await notifyStaffNewPaymentSubmission(ctx.telegram, submission);
       } catch (staffErr) {
         console.warn('[Payment] Could not notify staff:', staffErr.message);
+      }
+
+      // Async cloud persistence push
+      if (isTursoConfigured()) {
+        pushToTurso().catch((e) => console.warn('[Turso] Async payment submission push notice:', e.message));
       }
       return true;
     } catch (err) {

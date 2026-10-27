@@ -37,6 +37,7 @@ const {
 } = require('../services/staffArchive');
 const { createDatabaseBackup, sendDatabaseBackupToChat, restoreDatabaseFromBuffer } = require('../services/backupService');
 const { getSystemDiagnostics, formatDiagnosticsHtml } = require('../services/diagnosticsService');
+const { isTursoConfigured, pushToTurso, pullFromTurso } = require('../services/tursoService');
 const { config } = require('../config');
 
 function registerAdminHandlers(bot) {
@@ -1047,6 +1048,80 @@ function registerAdminHandlers(bot) {
       '📥 <b>Restore SQLite Database Backup</b>\n\n' +
       'To restore your database, simply <b>send or forward</b> your <code>.db</code> backup file (e.g. from /backup) directly to this chat.\n\n' +
       '⚠️ <i>Warning: Restoring will overwrite the active database with the uploaded backup file.</i>',
+      { parse_mode: 'HTML' }
+    );
+  });
+
+  // ==========================================
+  // /turso or /sync - Turso Cloud Synchronization
+  // ==========================================
+  bot.command(['turso', 'sync'], requireAdmin, async (ctx) => {
+    if (!isTursoConfigured()) {
+      return ctx.reply(
+        '☁️ <b>Turso Cloud Synchronization</b>\n\n' +
+        '⚠️ <b>Status:</b> Not Configured\n\n' +
+        'To enable permanent cloud persistence, set the following environment variables in Render:\n' +
+        '• <code>TURSO_DATABASE_URL</code>\n' +
+        '• <code>TURSO_AUTH_TOKEN</code>',
+        { parse_mode: 'HTML' }
+      );
+    }
+
+    const args = ctx.message.text.trim().split(/\s+/).slice(1);
+    const subCommand = (args[0] || 'status').toLowerCase();
+
+    if (subCommand === 'pull') {
+      let waitMsg = null;
+      try {
+        waitMsg = await ctx.reply('⏳ <i>Pulling cloud state from Turso into local SQLite...</i>', { parse_mode: 'HTML' });
+      } catch (_) {}
+
+      try {
+        const res = await pullFromTurso();
+        if (waitMsg) {
+          try { await ctx.deleteMessage(waitMsg.message_id); } catch (_) {}
+        }
+        return ctx.reply(
+          `✅ <b>Turso Pull Complete!</b>\n\n` +
+          `• <b>Rows Restored:</b> ${res.totalRowsPulled}\n` +
+          `• <b>Status:</b> Local database synchronized with cloud.`,
+          { parse_mode: 'HTML' }
+        );
+      } catch (err) {
+        return ctx.reply(`❌ Pull failed: ${escapeHtml(err.message)}`, { parse_mode: 'HTML' });
+      }
+    }
+
+    if (subCommand === 'push' || subCommand === 'now') {
+      let waitMsg = null;
+      try {
+        waitMsg = await ctx.reply('⏳ <i>Pushing local database state to Turso cloud...</i>', { parse_mode: 'HTML' });
+      } catch (_) {}
+
+      try {
+        const res = await pushToTurso();
+        if (waitMsg) {
+          try { await ctx.deleteMessage(waitMsg.message_id); } catch (_) {}
+        }
+        return ctx.reply(
+          `✅ <b>Turso Cloud Backup Complete!</b>\n\n` +
+          `• <b>Rows Uploaded:</b> ${res.totalRowsPushed}\n` +
+          `• <b>Cloud Status:</b> 🟢 Up to date and permanently persisted.`,
+          { parse_mode: 'HTML' }
+        );
+      } catch (err) {
+        return ctx.reply(`❌ Push failed: ${escapeHtml(err.message)}`, { parse_mode: 'HTML' });
+      }
+    }
+
+    return ctx.reply(
+      `☁️ <b>Turso Cloud Persistence Status</b>\n\n` +
+      `• <b>Status:</b> 🟢 Connected\n` +
+      `• <b>Cloud URL:</b> <code>${escapeHtml(config.tursoDatabaseUrl || 'configured')}</code>\n` +
+      `• <b>Auto-Sync:</b> Every 5 minutes + on payment approvals\n\n` +
+      `<b>Available Commands:</b>\n` +
+      `• <code>/turso push</code> — Force push local database to cloud now\n` +
+      `• <code>/turso pull</code> — Force pull cloud database into local bot`,
       { parse_mode: 'HTML' }
     );
   });

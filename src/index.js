@@ -1,6 +1,7 @@
 const { Telegraf } = require('telegraf');
 const { config, validateConfig } = require('./config');
 const { initDatabase, closeDatabase } = require('./db');
+const { isTursoConfigured, pullFromTurso, pushToTurso } = require('./services/tursoService');
 const { attachAuthContext } = require('./middleware/auth');
 const { requirePrivateChat } = require('./middleware/chatType');
 const { errorHandler } = require('./middleware/errorHandler');
@@ -22,6 +23,16 @@ async function createBot() {
   // Initialize SQLite Database
   initDatabase();
   console.log(`[Database] SQLite connected at: ${config.databasePath}`);
+
+  // Turso Cloud Sync on Startup (restores all records on cloud restarts)
+  if (!config.isTest && isTursoConfigured()) {
+    try {
+      console.log('[Turso] Cloud database configured. Synchronizing initial state...');
+      await pullFromTurso();
+    } catch (tursoErr) {
+      console.warn('⚠️ [Turso] Initial cloud synchronization warning:', tursoErr.message);
+    }
+  }
 
   // Create Telegraf Bot
   const bot = new Telegraf(config.botToken);
@@ -77,6 +88,7 @@ async function main() {
         { command: 'diagnostics', description: 'System health & operational diagnostics (Admin)' },
         { command: 'backup', description: 'Download live SQLite database backup (Admin)' },
         { command: 'restore', description: 'Restore SQLite database backup (Admin)' },
+        { command: 'turso', description: 'Turso Cloud persistence sync (Admin)' },
         { command: 'addmember', description: 'Register new member (Admin backup)' },
         { command: 'calendar', description: 'View current Ethiopian Calendar (ዓ.ም.) date' },
         { command: 'help', description: 'Show all bot commands and guide' },
@@ -122,6 +134,15 @@ async function main() {
       try {
         bot.stop(signal);
       } catch (_) {}
+      if (isTursoConfigured()) {
+        try {
+          console.log('[Turso] Pushing state to Turso cloud before exit...');
+          await pushToTurso();
+          console.log('[Turso] Turso cloud state successfully persisted.');
+        } catch (tursoErr) {
+          console.warn('[Turso] Shutdown push warning:', tursoErr.message);
+        }
+      }
       closeDatabase();
       console.log('[Shutdown] All services stopped. Goodbye.');
       process.exit(0);
