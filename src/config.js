@@ -21,7 +21,7 @@ const config = {
     : path.resolve(process.cwd(), 'data', 'natanim_fund.db'),
   defaultCurrency: process.env.DEFAULT_CURRENCY || 'ETB',
   defaultMonthlyAmountCents: getEnvNumber('DEFAULT_MONTHLY_AMOUNT_CENTS', 5000), // Default 50.00 ETB
-  dueDayOfMonth: getEnvNumber('DUE_DAY_OF_MONTH', 10),
+  dueDayOfMonth: getEnvNumber('DUE_DAY_OF_MONTH', 30),
   timezone: process.env.TIMEZONE || 'Africa/Addis_Ababa',
   reminderCronSchedule: process.env.REMINDER_CRON_SCHEDULE || '0 9 5 * *',
   reminderCooldownHours: getEnvNumber('REMINDER_COOLDOWN_HOURS', 72),

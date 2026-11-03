@@ -50,16 +50,21 @@ function getNextMonthsList(startYearMonth, count = 1) {
   return getNextAcademicMonthsList(startYearMonth, count);
 }
 
-function getDueDateForMonth(yearMonth, dueDay = 10) {
-  const [yearStr, monthStr] = yearMonth.split('-');
-  const year = parseInt(yearStr, 10);
-  const month = parseInt(monthStr, 10);
-  
-  // Handle months with fewer days than dueDay
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const actualDay = Math.min(dueDay, daysInMonth);
-  
-  return `${yearStr}-${monthStr}-${String(actualDay).padStart(2, '0')}`;
+function getDueDateForMonth(yearMonth, dueDay = 30) {
+  if (!yearMonth || typeof yearMonth !== 'string') return '';
+  const parts = yearMonth.split('-');
+  if (parts.length < 2) return yearMonth;
+
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+
+  // Map to the Ethiopian month corresponding to this period (sampled on the 15th)
+  const eth = toEthiopianDate(`${year}-${String(month).padStart(2, '0')}-15`);
+  const maxDay = eth.month === 13 ? (eth.year % 4 === 3 ? 6 : 5) : 30;
+  const dayInEth = Math.min(Math.max(1, dueDay), maxDay);
+
+  const greg = toGregorianDate(eth.year, eth.month, dayInEth);
+  return greg.dateStr;
 }
 
 function formatStatus(status) {
@@ -104,6 +109,7 @@ const {
   formatDualMonth,
   formatDualDate,
   toEthiopianDate,
+  toGregorianDate,
   getEthiopianToday,
   isAcademicMonth,
   getNextAcademicMonth,

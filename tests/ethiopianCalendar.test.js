@@ -15,6 +15,7 @@ const {
   getNextAcademicMonth,
   getNextAcademicMonthsList,
 } = require('../src/utils/ethiopianDate');
+const { getDueDateForMonth } = require('../src/utils/formatters');
 
 test('Ethiopian Calendar (ዓ.ም.) Conversion & Formatting Unit Tests', async (t) => {
   await t.test('1. All 13 Ethiopian months are correctly defined in Geez/Amharic and English', () => {
@@ -116,5 +117,22 @@ test('Ethiopian Calendar (ዓ.ም.) Conversion & Formatting Unit Tests', async (
     // Crossing summer vacation boundary (e.g. 3 months starting from May 2027)
     const crossBreak = getNextAcademicMonthsList('2027-05', 3);
     assert.deepStrictEqual(crossBreak, ['2027-05', '2027-06', '2027-10']);
+  });
+
+  await t.test('11. getDueDateForMonth calculates due date as the 30th day of the Ethiopian month (e.g. Tikimt 30 for October)', () => {
+    // 2026-10 is Tikimt (ጥቅምት 2019 E.C.). Due date on day 30 of EC month must be Tikimt 30 (2026-11-09)
+    const dueDateOct = getDueDateForMonth('2026-10');
+    assert.strictEqual(dueDateOct, '2026-11-09');
+    assert.strictEqual(formatDualDate(dueDateOct), 'ጥቅምት 30, 2019 ዓ.ም. (2026-11-09)');
+
+    // Custom due day e.g. 15th of the EC month
+    const dueDateMidOct = getDueDateForMonth('2026-10', 15);
+    assert.strictEqual(dueDateMidOct, '2026-10-25');
+    assert.strictEqual(formatDualDate(dueDateMidOct), 'ጥቅምት 15, 2019 ዓ.ም. (2026-10-25)');
+
+    // 2026-11 is Hidar (ኅዳር 2019 E.C.). Due date on day 30 of EC month must be Hidar 30 (2026-12-09)
+    const dueDateNov = getDueDateForMonth('2026-11');
+    assert.strictEqual(dueDateNov, '2026-12-09');
+    assert.strictEqual(formatDualDate(dueDateNov), 'ኅዳር 30, 2019 ዓ.ም. (2026-12-09)');
   });
 });

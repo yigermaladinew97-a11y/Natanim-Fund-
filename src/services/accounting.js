@@ -104,7 +104,7 @@ function getCurrency() {
 
 function getDueDayOfMonth() {
   const val = getSetting('due_day_of_month');
-  return val ? parseInt(val, 10) : 10;
+  return val ? parseInt(val, 10) : 30;
 }
 
 function generateTxId() {

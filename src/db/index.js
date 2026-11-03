@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { SCHEMA_SQL } = require('./schema');
 const { config } = require('../config');
+const { getDueDateForMonth } = require('../utils/formatters');
 
 let dbInstance = null;
 
@@ -91,8 +92,8 @@ function initDatabase(customPath) {
       if (res.changes > 0) {
         const memberId = res.lastInsertRowid;
         const currentMonth = today.slice(0, 7);
-        const dueDay = config.dueDayOfMonth || 10;
-        const dueDate = `${currentMonth}-${String(dueDay).padStart(2, '0')}`;
+        const dueDay = config.dueDayOfMonth || 30;
+        const dueDate = getDueDateForMonth(currentMonth, dueDay);
         const stdAmountRow = db.prepare("SELECT value FROM settings WHERE key = 'standard_amount_cents'").get();
         const stdAmount = stdAmountRow ? parseInt(stdAmountRow.value, 10) : 50000;
 

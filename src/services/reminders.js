@@ -46,22 +46,21 @@ function buildReminderMessage({
   cbeAccountNum,
   cbeAccountName,
 }) {
-  let msg = `🔔 <b>የወርሃዊ መዋጮ ማስታወሻ / Monthly Contribution Reminder</b>\n\n`;
-  msg += `ሰላም <b>${escapeHtml(fullName)}</b>! 🙏\n`;
-  msg += `ይህ የ <b>${formatDualMonth(month)}</b> ወርሃዊ የቤተክርስቲያን ፈንድ መዋጮ ማስታወሻ ነው።\n`;
-  msg += `This is a friendly reminder regarding your church contribution for <b>${formatDualMonth(month)}</b>.\n\n`;
-  msg += `💰 <b>የዚህ ወር ቀሪ ክፍያ / Month Due:</b> <code>${balanceFormatted}</code>\n`;
+  let msg = `📌 <b>የመዋጮ ማስታወሻ | REMINDER</b>\n`;
+  msg += `────────────────────\n`;
+  msg += `👤 <b>ባልደረባ / Member:</b> ${escapeHtml(fullName)}\n`;
+  msg += `📅 <b>ወር / Month:</b> ${formatDualMonth(month)}\n`;
+  msg += `💰 <b>የሚከፈል / Due:</b> <code>${balanceFormatted}</code>\n`;
   if (hasOlderDues && totalOutstandingFormatted) {
-    msg += `⚠️ <b>ጠቅላላ ያለብዎት ዕዳ / Total Outstanding:</b> <code>${totalOutstandingFormatted}</code>\n`;
+    msg += `⚠️ <b>ጠቅላላ ዕዳ / Total Due:</b> <code>${totalOutstandingFormatted}</code>\n`;
   }
-  msg += `⏰ <b>የመክፈያ ቀን / Due Date:</b> ${formatDualDate(dueDate) || 'ወሩ ከማለቁ በፊት'}\n\n`;
-  msg += `🏦 <b>የባንክ ሂሳብ መረጃ (CBE Account):</b>\n`;
-  msg += `• <b>Bank:</b> Commercial Bank of Ethiopia (CBE)\n`;
-  msg += `• <b>Account Number:</b> <code>${cbeAccountNum}</code>\n`;
-  msg += `• <b>Account Name:</b> ${escapeHtml(cbeAccountName)}\n`;
-  msg += `💡 <i>(የሂሳብ ቁጥሩን በመንካት ኮፒ ማድረግ ይችላሉ / Tap account number to copy)</i>\n\n`;
-  msg += `ክፍያውን በ CBE Mobile Banking፣ በ CBE Birr ወይም በቅርንጫፍ ከፈጸሙ በኋላ፣ ከታች ያለውን <b>📤 Submit Receipt / ደረሰኝ ላክ</b> ቁልፍ በመጫን የደረሰኙን ስክሪንሾት ወይም ፎቶ መላክ ይችላሉ።\n\n`;
-  msg += `እግዚአብሔር ይስጥልን! / May God bless your faithful commitment! 🙏`;
+  msg += `⏰ <b>ቀነ-ገደብ / Deadline:</b> ${formatDualDate(dueDate) || 'ወሩ ከማለቁ በፊት'}\n`;
+  msg += `────────────────────\n`;
+  msg += `🏦 <b>CBE Account:</b> <code>${cbeAccountNum}</code>\n`;
+  msg += `🏷 <b>Name:</b> ${escapeHtml(cbeAccountName)}\n`;
+  msg += `💡 <i>(ቁጥሩን ነክተው ኮፒ ያድርጉ / Tap to copy)</i>\n`;
+  msg += `────────────────────\n`;
+  msg += `📤 <i>ክፍያ ፈጽመው ደረሰኝ ይላኩ / Tap <b>Submit Receipt</b> below</i> 🙏`;
   return msg;
 }
 

@@ -41,7 +41,7 @@ function registerMember({ telegramId, fullName, phone, joinedDate, notes, actorT
       const settingRow = db.prepare("SELECT value FROM settings WHERE key = 'standard_amount_cents'").get();
       const standardAmount = settingRow ? parseInt(settingRow.value, 10) : 50000;
       const dueDayRow = db.prepare("SELECT value FROM settings WHERE key = 'due_day_of_month'").get();
-      const dueDay = dueDayRow ? parseInt(dueDayRow.value, 10) : 10;
+      const dueDay = dueDayRow ? parseInt(dueDayRow.value, 10) : 30;
       const currentMonth = getCurrentYearMonth();
       const dueDate = getDueDateForMonth(currentMonth, dueDay);
 
@@ -75,7 +75,7 @@ function registerMember({ telegramId, fullName, phone, joinedDate, notes, actorT
     const settingRow = db.prepare("SELECT value FROM settings WHERE key = 'standard_amount_cents'").get();
     const standardAmount = settingRow ? parseInt(settingRow.value, 10) : 50000;
     const dueDayRow = db.prepare("SELECT value FROM settings WHERE key = 'due_day_of_month'").get();
-    const dueDay = dueDayRow ? parseInt(dueDayRow.value, 10) : 10;
+    const dueDay = dueDayRow ? parseInt(dueDayRow.value, 10) : 30;
 
     const currentMonth = getCurrentYearMonth();
     const dueDate = getDueDateForMonth(currentMonth, dueDay);

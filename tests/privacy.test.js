@@ -6,6 +6,7 @@ const path = require('node:path');
 const { initDatabase, closeDatabase } = require('../src/db');
 const { registerMember } = require('../src/services/memberService');
 const { recordPayment, listMemberPayments, listMemberObligations, getMemberOutstandingTotal } = require('../src/services/accounting');
+const { getCurrentYearMonth } = require('../src/utils/formatters');
 
 const PRIVACY_DB_PATH = path.join(__dirname, 'test_privacy.db');
 
@@ -20,7 +21,7 @@ test('Cross-Member Privacy & Data Isolation Tests', async (t) => {
   cleanup();
   initDatabase(PRIVACY_DB_PATH);
 
-  const month = '2026-10';
+  const month = getCurrentYearMonth();
 
   // Create Alice and Bob
   const alice = registerMember({
