@@ -123,7 +123,7 @@ test('Automated Monthly Contribution Reminders & Service Tests', async (t) => {
     assert.ok(m1Msg.text.includes('50.00 ETB'));
     assert.ok(m1Msg.text.includes('1000987654321'));
     assert.ok(m1Msg.text.includes('St. Natanim Church Building Fund'));
-    assert.ok(m1Msg.text.includes('Submit Receipt'));
+    assert.ok(m1Msg.text.includes('ደረሰኝ ላክ'));
 
     // Verify m4 message (partial balance)
     const m4Msg = sentMessages.find((msg) => msg.chatId === '100000004');

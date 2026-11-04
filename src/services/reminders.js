@@ -46,21 +46,15 @@ function buildReminderMessage({
   cbeAccountNum,
   cbeAccountName,
 }) {
-  let msg = `📌 <b>የመዋጮ ማስታወሻ | REMINDER</b>\n`;
-  msg += `────────────────────\n`;
-  msg += `👤 <b>ባልደረባ / Member:</b> ${escapeHtml(fullName)}\n`;
-  msg += `📅 <b>ወር / Month:</b> ${formatDualMonth(month)}\n`;
-  msg += `💰 <b>የሚከፈል / Due:</b> <code>${balanceFormatted}</code>\n`;
+  let msg = `📌 ሰላም <b>${escapeHtml(fullName)}</b> 🙏\n`;
+  msg += `ይህ የ<b>${formatDualMonth(month)}</b> የናታኒም ፈንድ መዋጮ ማስታወሻ ነው፦\n\n`;
+  msg += `💰 <b>የሚከፈል፡</b> <code>${balanceFormatted}</code> (እስከ ${formatDualDate(dueDate) || 'ወሩ መጨረሻ'})\n`;
   if (hasOlderDues && totalOutstandingFormatted) {
-    msg += `⚠️ <b>ጠቅላላ ዕዳ / Total Due:</b> <code>${totalOutstandingFormatted}</code>\n`;
+    msg += `⚠️ <b>ጠቅላላ ያለብዎት ዕዳ፡</b> <code>${totalOutstandingFormatted}</code>\n`;
   }
-  msg += `⏰ <b>ቀነ-ገደብ / Deadline:</b> ${formatDualDate(dueDate) || 'ወሩ ከማለቁ በፊት'}\n`;
-  msg += `────────────────────\n`;
-  msg += `🏦 <b>CBE Account:</b> <code>${cbeAccountNum}</code>\n`;
-  msg += `🏷 <b>Name:</b> ${escapeHtml(cbeAccountName)}\n`;
-  msg += `💡 <i>(ቁጥሩን ነክተው ኮፒ ያድርጉ / Tap to copy)</i>\n`;
-  msg += `────────────────────\n`;
-  msg += `📤 <i>ክፍያ ፈጽመው ደረሰኝ ይላኩ / Tap <b>Submit Receipt</b> below</i> 🙏`;
+  msg += `🏦 <b>CBE፡</b> <code>${cbeAccountNum}</code> — ${escapeHtml(cbeAccountName)}\n`;
+  msg += `💡 <i>(የሂሳብ ቁጥሩን ነክተው በቀላሉ ኮፒ ማድረግ ይችላሉ)</i>\n\n`;
+  msg += `📤 <i>ክፍያውን እንደፈጸሙ ከታች <b>«ደረሰኝ ላክ»</b> የሚለውን ይጫኑ። እግዚአብሔር ይስጥልን! 🙏</i>`;
   return msg;
 }
 
