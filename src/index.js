@@ -58,6 +58,35 @@ async function createBot() {
   return bot;
 }
 
+async function launchBotWithRetry(bot, maxRetries = 8, delayMs = 6000) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Ensure no stale webhooks block long polling
+      try {
+        await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+      } catch (whErr) {
+        console.warn('[Bot] Note on deleteWebhook:', whErr.message);
+      }
+
+      console.log(`[Bot] Launching Natanim Fund Telegram bot (attempt ${attempt}/${maxRetries})...`);
+      await bot.launch({
+        dropPendingUpdates: true,
+        allowedUpdates: ['message', 'callback_query', 'my_chat_member', 'chat_member'],
+      });
+      console.log('✅ Natanim Fund Bot is now online and listening for messages.');
+      return;
+    } catch (err) {
+      const isConflict = err.message && (err.message.includes('409') || err.message.includes('Conflict'));
+      if (isConflict && attempt < maxRetries) {
+        console.warn(`⚠️ [Bot] 409 Conflict detected (previous instance is still releasing connection). Waiting ${delayMs / 1000}s before retrying (attempt ${attempt}/${maxRetries})...`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
 async function main() {
   // Start minimal HTTP health check server immediately for cloud platforms (Render, Koyeb, etc.)
   const http = require('node:http');
@@ -124,21 +153,8 @@ async function main() {
       console.warn('[Bot] Note: Could not set Telegram menu commands:', cmdErr.message);
     }
 
-    // Ensure no stale webhooks block long polling
-    try {
-      console.log('[Bot] Clearing any leftover Telegram webhooks...');
-      await bot.telegram.deleteWebhook({ drop_pending_updates: true });
-    } catch (whErr) {
-      console.warn('[Bot] Note on deleteWebhook:', whErr.message);
-    }
-
-    // Start Telegram polling
-    console.log('[Bot] Launching Natanim Fund Telegram bot (long polling)...');
-    await bot.launch({
-      dropPendingUpdates: true,
-      allowedUpdates: ['message', 'callback_query', 'my_chat_member', 'chat_member'],
-    });
-    console.log('✅ Natanim Fund Bot is now online and listening for messages.');
+    // Start Telegram polling with automatic conflict-retry
+    await launchBotWithRetry(bot);
 
     // Graceful Shutdown handlers
     const shutdown = async (signal) => {
