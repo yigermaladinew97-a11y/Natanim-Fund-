@@ -124,9 +124,20 @@ async function main() {
       console.warn('[Bot] Note: Could not set Telegram menu commands:', cmdErr.message);
     }
 
+    // Ensure no stale webhooks block long polling
+    try {
+      console.log('[Bot] Clearing any leftover Telegram webhooks...');
+      await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+    } catch (whErr) {
+      console.warn('[Bot] Note on deleteWebhook:', whErr.message);
+    }
+
     // Start Telegram polling
     console.log('[Bot] Launching Natanim Fund Telegram bot (long polling)...');
-    await bot.launch();
+    await bot.launch({
+      dropPendingUpdates: true,
+      allowedUpdates: ['message', 'callback_query', 'my_chat_member', 'chat_member'],
+    });
     console.log('✅ Natanim Fund Bot is now online and listening for messages.');
 
     // Graceful Shutdown handlers
