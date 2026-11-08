@@ -77,8 +77,16 @@ async function launchBotWithRetry(bot, maxRetries = 8, delayMs = 6000) {
       return;
     } catch (err) {
       const isConflict = err.message && (err.message.includes('409') || err.message.includes('Conflict'));
-      if (isConflict && attempt < maxRetries) {
-        console.warn(`⚠️ [Bot] 409 Conflict detected (previous instance is still releasing connection). Waiting ${delayMs / 1000}s before retrying (attempt ${attempt}/${maxRetries})...`);
+      const isNetwork = err.message && (
+        err.message.includes('ENOTFOUND') ||
+        err.message.includes('ETIMEDOUT') ||
+        err.message.includes('ECONNRESET') ||
+        err.message.includes('fetch failed') ||
+        err.message.includes('network')
+      );
+
+      if ((isConflict || isNetwork) && attempt < maxRetries) {
+        console.warn(`⚠️ [Bot] Connection issue (${err.message}). Waiting ${delayMs / 1000}s before retrying (attempt ${attempt}/${maxRetries})...`);
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       } else {
         throw err;
@@ -99,6 +107,9 @@ async function main() {
       uptime: process.uptime(),
       tursoConfigured: isTursoConfigured(),
     }));
+  });
+  server.on('error', (err) => {
+    console.warn(`⚠️ [HTTP Server Warning] ${err.message}`);
   });
   server.listen(port, '0.0.0.0', () => {
     console.log(`[HTTP] Health check server listening on 0.0.0.0:${port}`);
