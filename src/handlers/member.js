@@ -8,6 +8,7 @@ const {
   getMemberPrepaidMonths,
   getCurrency,
   getBankInfo,
+  getEligibleSubmissionMonths,
 } = require('../services/accounting');
 const { setSession } = require('../utils/session');
 const {
@@ -120,12 +121,18 @@ async function handleHistory(ctx) {
 async function startMemberPaymentSubmission(ctx) {
   const member = ctx.state?.member;
   if (!member || member.status !== 'active') {
-    return ctx.reply('⚠️ Only active church members can submit payment receipts.');
+    return ctx.reply('⚠️ ንቁ የቤተክርስቲያን አባላት ብቻ ደረሰኝ ማስረከብ ይችላሉ።');
   }
 
-  const curMonth = getCurrentYearMonth();
-  const activeMonth = isAcademicMonth(curMonth) ? curMonth : getNextAcademicMonth(curMonth, 1);
-  const prevMonth = getNextAcademicMonth(activeMonth, -1);
+  const eligibleMonths = getEligibleSubmissionMonths(member.id, 3);
+  if (eligibleMonths.length === 0) {
+    return ctx.reply(
+      '🎉 <b>ምንም ያልተከፈለ መዋጮ የለብዎትም!</b>\n\n' +
+      'የሁሉንም ወራት መዋጮዎን ሙሉ በሙሉ ከፍለዋል (ወይም ያስገቧቸው ደረሰኞች በማረጋገጥ ላይ ናቸው)።\n' +
+      'እግዚአብሔር ይስጥልን! 🙏',
+      { parse_mode: 'HTML' }
+    );
+  }
 
   setSession(ctx.from.id, {
     step: 'MEMBER_SUBMIT_MONTH',
@@ -133,23 +140,20 @@ async function startMemberPaymentSubmission(ctx) {
     memberName: member.full_name,
   });
 
-  const buttons = [
-    [
-      Markup.button.callback(`📅 ${formatDualMonth(activeMonth)}`, `mem_sub_month_${activeMonth}`),
-      Markup.button.callback(`📅 ${formatDualMonth(prevMonth)}`, `mem_sub_month_${prevMonth}`),
-    ],
-    [Markup.button.callback('❌ Cancel', 'action_cancel')],
-  ];
+  const buttons = eligibleMonths.map((m) => [
+    Markup.button.callback(`📅 ${formatDualMonth(m)}`, `mem_sub_month_${m}`),
+  ]);
+  buttons.push([Markup.button.callback('❌ ሰርዝ', 'action_cancel')]);
 
   const cbeInfo = getBankInfo();
 
   await ctx.reply(
-    `📤 <b>Submit Contribution Receipt — Step 1/4</b>\n\n` +
-    `👤 <b>Member:</b> ${escapeHtml(member.full_name)} (#${member.id})\n\n` +
+    `📤 <b>የመዋጮ ደረሰኝ ማስረከቢያ — ደረጃ 1/4</b>\n\n` +
+    `👤 <b>አባል፡</b> ${escapeHtml(member.full_name)} (#${member.id})\n\n` +
     `${cbeInfo}\n\n` +
-    `🎓 <i>Note: Fellowship contributions run from October (ጥቅምት) up to June (ሰኔ). Summer vacation months (July-Sept / ሐምሌ-መስከረም) are contribution-free.</i>\n\n` +
-    `👇 <b>Select the starting period this payment covers:</b>\n` +
-    `<i>(Or reply with another <code>YYYY-MM</code>)</i>`,
+    `🎓 <i>ማስታወሻ፦ የናታኒም ፈንድ መዋጮ ከጥቅምት እስከ ሰኔ ባሉት 9 ወራት ብቻ የሚሰበሰብ ሲሆን፣ የክረምት ወራት (ከሐምሌ እስከ መስከረም) መዋጮ አይጠየቅም።</i>\n\n` +
+    `👇 <b>ክፍያው የሚሸፍነውን መነሻ ወር ይምረጡ፦</b>\n` +
+    `<i>(ወይም ሌላ ወር በ <code>YYYY-MM</code> ቅርጸት ይጻፉ)</i>`,
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard(buttons),

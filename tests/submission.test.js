@@ -11,6 +11,8 @@ const {
   approvePaymentSubmission,
   rejectPaymentSubmission,
   getOrCreateObligation,
+  validateSubmissionMonth,
+  getEligibleSubmissionMonths,
 } = require('../src/services/accounting');
 const { assignRole, getStaffTelegramIds } = require('../src/services/permissions');
 
@@ -160,6 +162,113 @@ test('Payment Screenshot Submission & Staff Verification Workflow Tests', async 
       assert.strictEqual(obl.status, 'FULLY_PAID');
       assert.strictEqual(obl.amount_paid_cents, 5000);
     }
+  });
+
+  await t.test('8. Submitting for an already FULLY_PAID month throws an error', () => {
+    assert.throws(() => {
+      createPaymentSubmission({
+        memberId: member.id,
+        telegramId: '300000001',
+        yearMonth: '2026-10', // already FULLY_PAID from test 3
+        amountCents: 5000,
+        paymentMethod: 'bank_transfer',
+        fileId: 'photo_dup',
+        fileUniqueId: 'unique_dup',
+      });
+    }, /ሙሉ በሙሉ ተከፍሏል/);
+  });
+
+  await t.test('9. Submitting a duplicate PENDING receipt for the same month throws an error', () => {
+    // First submission succeeds
+    createPaymentSubmission({
+      memberId: member.id,
+      telegramId: '300000001',
+      yearMonth: '2027-04',
+      amountCents: 5000,
+      paymentMethod: 'bank_transfer',
+      fileId: 'photo_pending_1',
+      fileUniqueId: 'unique_pending_1',
+    });
+
+    // Second submission for the same month while pending must throw
+    assert.throws(() => {
+      createPaymentSubmission({
+        memberId: member.id,
+        telegramId: '300000001',
+        yearMonth: '2027-04',
+        amountCents: 5000,
+        paymentMethod: 'bank_transfer',
+        fileId: 'photo_pending_2',
+        fileUniqueId: 'unique_pending_2',
+      });
+    }, /በመታየት ላይ ነው/);
+  });
+
+  await t.test('10. Submitting an amount below 50.00 ETB (standard amount) throws an error', () => {
+    assert.throws(() => {
+      createPaymentSubmission({
+        memberId: member.id,
+        telegramId: '300000001',
+        yearMonth: '2027-05',
+        amountCents: 4900, // 49.00 ETB < 50.00 ETB
+        paymentMethod: 'bank_transfer',
+        fileId: 'photo_low',
+        fileUniqueId: 'unique_low',
+      });
+    }, /አነስተኛው የክፍያ መጠን/);
+  });
+
+  await t.test('11. Submitting below count * standardAmount for multi-month throws an error', () => {
+    assert.throws(() => {
+      createPaymentSubmission({
+        memberId: member.id,
+        telegramId: '300000001',
+        yearMonth: '2027-05',
+        monthsCount: 3,
+        amountCents: 10000, // 100.00 ETB < 150.00 ETB
+        paymentMethod: 'bank_transfer',
+        fileId: 'photo_low_multi',
+        fileUniqueId: 'unique_low_multi',
+      });
+    }, /አነስተኛው የክፍያ መጠን/);
+  });
+
+  await t.test('12. validateSubmissionMonth validates formats, vacation, paid, and pending in Amharic', () => {
+    // Format error
+    const fmtRes = validateSubmissionMonth(member.id, 'bad-month');
+    assert.strictEqual(fmtRes.ok, false);
+    assert.match(fmtRes.error, /የተሳሳተ የወር ቅርጸት/);
+
+    // Vacation month (e.g. 2027-07 / Hamle)
+    const vacRes = validateSubmissionMonth(member.id, '2027-07');
+    assert.strictEqual(vacRes.ok, false);
+    assert.match(vacRes.error, /የዕረፍት ወር ነው/);
+
+    // Fully paid month (2026-10)
+    const paidRes = validateSubmissionMonth(member.id, '2026-10');
+    assert.strictEqual(paidRes.ok, false);
+    assert.match(paidRes.error, /ሙሉ በሙሉ ከፍለዋል/);
+
+    // Pending month (2027-04)
+    const pendRes = validateSubmissionMonth(member.id, '2027-04');
+    assert.strictEqual(pendRes.ok, false);
+    assert.match(pendRes.error, /በመታየት ላይ ነው/);
+
+    // Eligible unpaid month (2027-05)
+    const okRes = validateSubmissionMonth(member.id, '2027-05');
+    assert.strictEqual(okRes.ok, true);
+  });
+
+  await t.test('13. getEligibleSubmissionMonths filters out fully paid and pending months', () => {
+    const eligible = getEligibleSubmissionMonths(member.id, 5);
+    assert.ok(eligible.length > 0);
+    // 2026-10 (paid), 2026-12..2027-03 (paid), 2027-04 (pending) should NOT be in eligible list
+    assert.ok(!eligible.includes('2026-10'));
+    assert.ok(!eligible.includes('2026-12'));
+    assert.ok(!eligible.includes('2027-01'));
+    assert.ok(!eligible.includes('2027-02'));
+    assert.ok(!eligible.includes('2027-03'));
+    assert.ok(!eligible.includes('2027-04'));
   });
 
   cleanup();

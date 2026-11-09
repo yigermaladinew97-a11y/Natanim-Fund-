@@ -20,6 +20,7 @@ const {
   notifyStaffNewPaymentSubmission,
   setBankInfo,
   setCbeAccountDetails,
+  validateSubmissionMonth,
 } = require('../services/accounting');
 const {
   parseMoneyToCents,
@@ -130,29 +131,32 @@ function registerWizardHandler(bot) {
       selectedMonth: month,
     });
 
+    const standardAmount = getStandardAmountCents();
+    const currency = getCurrency();
+
     const monthButtons = [
       [
-        Markup.button.callback('1 Month', 'mem_sub_cnt_1'),
-        Markup.button.callback('2 Months', 'mem_sub_cnt_2'),
-        Markup.button.callback('3 Months', 'mem_sub_cnt_3'),
+        Markup.button.callback(`1 ወር (${formatMoney(standardAmount, currency)})`, 'mem_sub_cnt_1'),
+        Markup.button.callback(`2 ወራት (${formatMoney(standardAmount * 2, currency)})`, 'mem_sub_cnt_2'),
+        Markup.button.callback(`3 ወራት (${formatMoney(standardAmount * 3, currency)})`, 'mem_sub_cnt_3'),
       ],
       [
-        Markup.button.callback('4 Months (Semester)', 'mem_sub_cnt_4'),
-        Markup.button.callback('5 Months (Semester)', 'mem_sub_cnt_5'),
-        Markup.button.callback('🎓 9 Mo (Academic Year)', 'mem_sub_cnt_9'),
+        Markup.button.callback(`4 ወራት (${formatMoney(standardAmount * 4, currency)})`, 'mem_sub_cnt_4'),
+        Markup.button.callback(`5 ወራት (ሴሚስተር)`, 'mem_sub_cnt_5'),
+        Markup.button.callback(`🎓 9 ወራት (ሙሉ ዓመት)`, 'mem_sub_cnt_9'),
       ],
       [
-        Markup.button.callback('❌ Cancel', 'action_cancel'),
+        Markup.button.callback('❌ ሰርዝ', 'action_cancel'),
       ],
     ];
 
     return ctx.reply(
-      `📅 *Starting Month:* ${month}\n\n` +
-      `*Step 2/4 — Duration:*\n` +
-      `How many months does this payment cover?\n` +
-      `Tap an option below, or reply with a number (e.g. \`1\`, \`3\`, \`6\`):`,
+      `📅 <b>መነሻ ወር፡</b> ${formatDualMonth(month)}\n\n` +
+      `<b>ደረጃ 2/4 — የወራት ብዛት፡</b>\n` +
+      `ይህ ክፍያ ስንት ወራት ይሸፍናል?\n` +
+      `ከታች ካሉት አማራጮች አንዱን ይምረጡ ወይም ቁጥር ይጻፉ (ለምሳሌ <code>1</code> ወይም <code>3</code>)፦`,
       {
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         ...Markup.inlineKeyboard(monthButtons),
       }
     );
@@ -167,17 +171,11 @@ function registerWizardHandler(bot) {
     const academicMonths = getNextAcademicMonthsList(startMonth, count);
     const endMonth = academicMonths[academicMonths.length - 1];
 
-    let totalDue = 0;
-    if (count === 1) {
-      const obl = getOrCreateObligation(session.memberId, startMonth);
-      totalDue = Math.max(0, obl.amount_due_cents - obl.amount_paid_cents) || obl.amount_due_cents;
-    } else {
-      totalDue = count * standardAmount;
-    }
+    const totalDue = count * standardAmount;
 
     const startDual = formatDualMonth(startMonth);
     const endDual = formatDualMonth(endMonth);
-    const periodDisplay = count === 1 ? startDual : `${startDual} → ${endDual} (${count} Months)`;
+    const periodDisplay = count === 1 ? startDual : `${startDual} → ${endDual} (${count} ወራት)`;
 
     setSession(userId, {
       ...session,
@@ -187,19 +185,18 @@ function registerWizardHandler(bot) {
       dueBalance: totalDue,
     });
 
-    const buttons = [];
-    if (totalDue > 0) {
-      buttons.push([Markup.button.callback(`💰 Pay ${formatMoney(totalDue, currency)} (${count} mo)`, `mem_sub_amt_${totalDue}`)]);
-    }
-    buttons.push([Markup.button.callback('❌ Cancel', 'action_cancel')]);
+    const buttons = [
+      [Markup.button.callback(`💰 ${formatMoney(totalDue, currency)} አረጋግጥ`, `mem_sub_amt_${totalDue}`)],
+      [Markup.button.callback('❌ ሰርዝ', 'action_cancel')],
+    ];
 
     return ctx.reply(
-      `📅 *Covered Period:* ${periodDisplay}\n` +
-      `🎯 *Calculated Contribution:* ${formatMoney(totalDue, currency)}\n\n` +
-      `*Step 3/4 — Payment Amount:*\n` +
-      `Tap below to confirm full amount, or reply with the exact amount you paid:`,
+      `📅 <b>የሚሸፈነው ጊዜ፡</b> ${periodDisplay}\n` +
+      `🎯 <b>የሚከፈል መዋጮ፡</b> <code>${formatMoney(totalDue, currency)}</code>\n\n` +
+      `<b>ደረጃ 3/4 — የክፍያ መጠን፡</b>\n` +
+      `መጠኑን ለማረጋገጥ ከታች ያለውን ቁልፍ ይጫኑ ወይም የከፈሉትን ትክክለኛ መጠን ይጻፉ፦`,
       {
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         ...Markup.inlineKeyboard(buttons),
       }
     );
@@ -234,19 +231,19 @@ function registerWizardHandler(bot) {
 
       const userRole = ctx.state?.role || 'member';
       await ctx.reply(
-        `🎉 *Payment Receipt Submitted!*\n\n` +
-        `Thank you, *${session.memberName}*!\n` +
-        `Your payment receipt for *${periodDisplay}* (*${formatMoney(session.amountCents, currency)}*) has been sent to church leadership for verification.\n\n` +
-        `📋 *Submission Details:*\n` +
-        `• *Period:* ${periodDisplay}\n` +
-        `• *Months Covered:* ${monthsCount} Month${monthsCount > 1 ? 's' : ''}\n` +
-        `• *Amount:* ${formatMoney(session.amountCents, currency)}\n` +
-        `• *Method:* ${formatPaymentMethod(session.paymentMethod)}\n` +
-        `• *Ref / Note:* ${caption || 'None'}\n\n` +
-        `⏳ You will receive an official confirmation message and receipt once approved by the church treasurer!`,
+        `✅ <b>የመዋጮ ደረሰኝዎ በተሳካ ሁኔታ ተልኳል!</b>\n\n` +
+        `እናመሰግናለን <b>${escapeHtml(session.memberName)}</b>! 🙏\n` +
+        `ለ<b>${periodDisplay}</b> የከፈሉት <code>${formatMoney(session.amountCents, currency)}</code> ደረሰኝ ለአስተዳዳሪዎች ተልኳል።\n\n` +
+        `📋 <b>የደረሰኝ ዝርዝር መረጃ፦</b>\n` +
+        `• <b>የሚሸፈነው ጊዜ፡</b> ${periodDisplay}\n` +
+        `• <b>የወራት ብዛት፡</b> ${monthsCount} ወር\n` +
+        `• <b>የተከፈለው መጠን፡</b> <code>${formatMoney(session.amountCents, currency)}</code>\n` +
+        `• <b>የክፍያ መንገድ፡</b> ${formatPaymentMethod(session.paymentMethod)}\n` +
+        `• <b>ማስታወሻ / ማጣቀሻ፡</b> ${escapeHtml(caption || 'የለም')}\n\n` +
+        `⏳ <i>ክፍያው በፈንዱ አስተዳዳሪዎች እንደተረጋገጠ ይፋዊ ማረጋገጫ ይደርስዎታል። እግዚአብሔር ይስጥልን!</i> ✨`,
         {
-          parse_mode: 'Markdown',
-          ...getMainMenuKeyboard(userRole),
+          parse_mode: 'HTML',
+          ...getMainMenuKeyboard(userRole, 'am'),
         }
       );
 
@@ -263,7 +260,7 @@ function registerWizardHandler(bot) {
       }
       return true;
     } catch (err) {
-      await ctx.reply(`❌ Could not submit payment proof: ${err.message}`, getMainMenuKeyboard(ctx.state?.role || 'member'));
+      await ctx.reply(`❌ ደረሰኙን ማስረከብ አልተቻለም፦ ${err.message}`, getMainMenuKeyboard(ctx.state?.role || 'member', 'am'));
       return true;
     }
   }
@@ -426,25 +423,17 @@ function registerWizardHandler(bot) {
     // MEMBER PAYMENT SUBMISSION WIZARD (Month -> Months Count -> Amount -> Method -> Photo)
     // ----------------------------------------------------
     if (session.step === 'MEMBER_SUBMIT_MONTH') {
-      if (!isValidYearMonth(text)) {
-        return ctx.reply('❌ Invalid period format. Please enter YYYY-MM (e.g. 2026-10) or tap Cancel:', getCancelReplyKeyboard());
+      const validation = validateSubmissionMonth(session.memberId, text.trim());
+      if (!validation.ok) {
+        return ctx.reply(validation.error, { parse_mode: 'HTML', ...getCancelReplyKeyboard('am') });
       }
-      if (!isAcademicMonth(text)) {
-        return ctx.reply(
-          '🏖️ *Summer Vacation Period:*\n' +
-          'Students only pay from *October (ጥቅምት)* up to *June (ሰኔ)*.\n' +
-          'Months like July, August, and September (ሐምሌ፣ ነሐሴ፣ መስከረም) are vacation months free of contribution.\n\n' +
-          'Please enter an academic month (e.g. `2026-10` for ጥቅምት) or tap Cancel:',
-          { parse_mode: 'Markdown', ...getCancelReplyKeyboard() }
-        );
-      }
-      return promptMemberForPaymentMonths(ctx, userId, session, text);
+      return promptMemberForPaymentMonths(ctx, userId, session, text.trim());
     }
 
     if (session.step === 'MEMBER_SUBMIT_WAIT_MONTHS') {
       const cleanNum = parseInt(text.trim(), 10);
       if (Number.isNaN(cleanNum) || cleanNum < 1 || cleanNum > 24) {
-        return ctx.reply('❌ Please enter a valid number of months (1 to 24) or tap an option above:', getCancelReplyKeyboard());
+        return ctx.reply('❌ እባክዎ ትክክለኛ የወራት ቁጥር (ከ 1 እስከ 24) ያስገቡ ወይም ከላይ ካሉት አማራጮች አንዱን ይጫኑ፦', getCancelReplyKeyboard('am'));
       }
       return promptMemberForPaymentAmount(ctx, userId, session, cleanNum);
     }
@@ -452,9 +441,22 @@ function registerWizardHandler(bot) {
     if (session.step === 'MEMBER_SUBMIT_WAIT_AMOUNT') {
       const cents = parseMoneyToCents(text);
       if (!cents) {
-        return ctx.reply('❌ Please enter a valid payment amount (e.g. 500 or 1000):', getCancelReplyKeyboard());
+        return ctx.reply('❌ እባክዎ ትክክለኛ የብር መጠን ያስገቡ (ለምሳሌ 50 ወይም 100)፦', getCancelReplyKeyboard('am'));
       }
+
+      const standardAmount = getStandardAmountCents();
+      const count = session.monthsCount || 1;
+      const minRequired = count * standardAmount;
       const currency = getCurrency();
+
+      if (cents < minRequired) {
+        return ctx.reply(
+          `⚠️ <b>አነስተኛው የክፍያ መጠን ${formatMoney(minRequired, currency)} ነው።</b>\n` +
+          `ለ${count} ወር ከ${formatMoney(minRequired, currency)} በታች መክፈል አይቻልም። እባክዎ ትክክለኛውን መጠን ያስገቡ፦`,
+          { parse_mode: 'HTML', ...getCancelReplyKeyboard('am') }
+        );
+      }
+
       setSession(userId, {
         ...session,
         step: 'MEMBER_SUBMIT_WAIT_METHOD',
@@ -462,18 +464,18 @@ function registerWizardHandler(bot) {
       });
 
       const methodButtons = [
-        [Markup.button.callback('🏦 CBE Mobile / Bank Transfer', 'mem_sub_meth_bank_transfer')],
-        [Markup.button.callback('📱 CBE Birr Transfer', 'mem_sub_meth_mobile_money')],
-        [Markup.button.callback('❌ Cancel', 'action_cancel')],
+        [Markup.button.callback('🏦 የCBE ባንክ ዝውውር', 'mem_sub_meth_bank_transfer')],
+        [Markup.button.callback('📱 CBE Birr ዝውውር', 'mem_sub_meth_mobile_money')],
+        [Markup.button.callback('❌ ሰርዝ', 'action_cancel')],
       ];
 
       return ctx.reply(
-        `💰 *Amount:* ${formatMoney(cents, currency)}\n` +
-        `📅 *Period:* ${session.periodDisplay || session.selectedMonth}\n\n` +
-        `*Step 4/4 — Payment Method:*\n` +
-        `How did you make this payment?`,
+        `💰 <b>የክፍያ መጠን፡</b> <code>${formatMoney(cents, currency)}</code>\n` +
+        `📅 <b>የሚሸፈነው ጊዜ፡</b> ${session.periodDisplay || session.selectedMonth}\n\n` +
+        `<b>ደረጃ 4/4 — የክፍያ መንገድ፡</b>\n` +
+        `ክፍያውን እንዴት ፈጸሙ?`,
         {
-          parse_mode: 'Markdown',
+          parse_mode: 'HTML',
           ...Markup.inlineKeyboard(methodButtons),
         }
       );
@@ -481,9 +483,12 @@ function registerWizardHandler(bot) {
 
     if (session.step === 'MEMBER_SUBMIT_WAIT_PHOTO') {
       return ctx.reply(
-        '📸 *Please send your CBE payment screenshot or deposit receipt as a photo or image file* (not plain text).\n\n' +
-        'Tap the attachment icon 📎 or photo gallery icon and select your CBE receipt photo, or tap Cancel below:',
-        getCancelReplyKeyboard()
+        '📸 <b>እባክዎ የክፍያ ደረሰኝዎን እንደ ፎቶ (Image/Photo) ይላኩ እንጂ በጽሑፍ አይላኩ።</b>\n\n' +
+        'የCBE ስክሪንሾት ካለዎት በቴሌግራም የፎቶ መላኪያ ይላኩት። ለመሰረዝ ከፈለጉ «ሰርዝ» የሚለውን ይጫኑ፦',
+        {
+          parse_mode: 'HTML',
+          ...getCancelReplyKeyboard('am'),
+        }
       );
     }
 
@@ -878,6 +883,12 @@ function registerWizardHandler(bot) {
       }
       const yearMonth = text;
       const obligation = getOrCreateObligation(session.memberId, yearMonth);
+      if (obligation.status === 'FULLY_PAID') {
+        return ctx.reply(
+          `⚠️ <b>የ${formatDualMonth(yearMonth)} መዋጮ አስቀድሞ ሙሉ በሙሉ ተከፍሏል።</b>\nደጋግሞ መክፈል አይቻልም። እባክዎ ያልተከፈለ ወር ይምረጡ፦`,
+          { parse_mode: 'HTML', ...getCancelKeyboard() }
+        );
+      }
       const currency = getCurrency();
       const balanceCents = Math.max(0, obligation.amount_due_cents - obligation.amount_paid_cents);
 
@@ -1003,9 +1014,14 @@ function registerWizardHandler(bot) {
     const userId = ctx.from.id;
     const session = getSession(userId);
     if (!session || session.step !== 'MEMBER_SUBMIT_MONTH') {
-      return ctx.reply('Session expired. Please start again with /submitpayment.');
+      return ctx.reply('⚠️ የክፍያ ሂደቱ ጊዜው አልፏል። እባክዎ እንደገና በ /submitpayment ይጀምሩ።');
     }
-    return promptMemberForPaymentMonths(ctx, userId, session, ctx.match[1]);
+    const selectedMonth = ctx.match[1];
+    const validation = validateSubmissionMonth(session.memberId, selectedMonth);
+    if (!validation.ok) {
+      return ctx.reply(validation.error, { parse_mode: 'HTML', ...getCancelReplyKeyboard('am') });
+    }
+    return promptMemberForPaymentMonths(ctx, userId, session, selectedMonth);
   });
 
   bot.action(/^mem_sub_cnt_(\d+)$/, async (ctx) => {
@@ -1013,7 +1029,7 @@ function registerWizardHandler(bot) {
     const userId = ctx.from.id;
     const session = getSession(userId);
     if (!session || (session.step !== 'MEMBER_SUBMIT_WAIT_MONTHS' && session.step !== 'MEMBER_SUBMIT_MONTH')) {
-      return ctx.reply('Session expired. Please start again with /submitpayment.');
+      return ctx.reply('⚠️ የክፍያ ሂደቱ ጊዜው አልፏል። እባክዎ እንደገና በ /submitpayment ይጀምሩ።');
     }
     return promptMemberForPaymentAmount(ctx, userId, session, ctx.match[1]);
   });
@@ -1023,11 +1039,22 @@ function registerWizardHandler(bot) {
     const userId = ctx.from.id;
     const session = getSession(userId);
     if (!session || session.step !== 'MEMBER_SUBMIT_WAIT_AMOUNT') {
-      return ctx.reply('Session expired. Please start again with /submitpayment.');
+      return ctx.reply('⚠️ የክፍያ ሂደቱ ጊዜው አልፏል። እባክዎ እንደገና በ /submitpayment ይጀምሩ።');
     }
 
     const amountCents = parseInt(ctx.match[1], 10);
+    const standardAmount = getStandardAmountCents();
+    const count = session.monthsCount || 1;
+    const minRequired = count * standardAmount;
     const currency = getCurrency();
+
+    if (amountCents < minRequired) {
+      return ctx.reply(
+        `⚠️ <b>አነስተኛው የክፍያ መጠን ${formatMoney(minRequired, currency)} ነው።</b>\n` +
+        `ለ${count} ወር ከ${formatMoney(minRequired, currency)} በታች መክፈል አይቻልም። እባክዎ ትክክለኛውን መጠን ያስገቡ፦`,
+        { parse_mode: 'HTML', ...getCancelReplyKeyboard('am') }
+      );
+    }
 
     setSession(userId, {
       ...session,
@@ -1036,18 +1063,18 @@ function registerWizardHandler(bot) {
     });
 
     const methodButtons = [
-      [Markup.button.callback('🏦 CBE Mobile / Bank Transfer', 'mem_sub_meth_bank_transfer')],
-      [Markup.button.callback('📱 CBE Birr Transfer', 'mem_sub_meth_mobile_money')],
-      [Markup.button.callback('❌ Cancel', 'action_cancel')],
+      [Markup.button.callback('🏦 የCBE ባንክ ዝውውር', 'mem_sub_meth_bank_transfer')],
+      [Markup.button.callback('📱 CBE Birr ዝውውር', 'mem_sub_meth_mobile_money')],
+      [Markup.button.callback('❌ ሰርዝ', 'action_cancel')],
     ];
 
     await ctx.reply(
-      `💰 *Amount:* ${formatMoney(amountCents, currency)}\n` +
-      `📅 *Period:* ${session.periodDisplay || session.selectedMonth}\n\n` +
-      `*Step 4/4 — Payment Method:*\n` +
-      `How did you make this payment?`,
+      `💰 <b>የክፍያ መጠን፦</b> <code>${formatMoney(amountCents, currency)}</code>\n` +
+      `📅 <b>የሚሸፈነው ጊዜ፦</b> ${session.periodDisplay || session.selectedMonth}\n\n` +
+      `<b>ደረጃ 4/4 — የክፍያ መንገድ፦</b>\n` +
+      `ክፍያውን እንዴት ፈጸሙ?`,
       {
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         ...Markup.inlineKeyboard(methodButtons),
       }
     );
@@ -1058,7 +1085,7 @@ function registerWizardHandler(bot) {
     const userId = ctx.from.id;
     const session = getSession(userId);
     if (!session || session.step !== 'MEMBER_SUBMIT_WAIT_METHOD') {
-      return ctx.reply('Session expired. Please start again with /submitpayment.');
+      return ctx.reply('⚠️ የክፍያ ሂደቱ ጊዜው አልፏል። እባክዎ እንደገና በ /submitpayment ይጀምሩ።');
     }
 
     const paymentMethod = ctx.match[1];
@@ -1071,16 +1098,16 @@ function registerWizardHandler(bot) {
     });
 
     await ctx.reply(
-      `✅ *Payment Details:*\n` +
-      `• *Period:* ${session.periodDisplay || session.selectedMonth}\n` +
-      `• *Months Covered:* ${session.monthsCount || 1} Month${(session.monthsCount || 1) > 1 ? 's' : ''}\n` +
-      `• *Amount:* ${formatMoney(session.amountCents, currency)}\n` +
-      `• *Method:* ${formatPaymentMethod(paymentMethod)}\n\n` +
-      `📸 *Please send your CBE payment screenshot or receipt photo now:*\n` +
-      `_(Take a screenshot of your CBE Mobile Banking or CBE Birr confirmation and send it as a photo. You can include your CBE reference number in the photo caption)_`,
+      `✅ <b>የክፍያው ዝርዝር፦</b>\n` +
+      `• <b>የሚሸፈነው ጊዜ፦</b> ${session.periodDisplay || session.selectedMonth}\n` +
+      `• <b>የወራት ብዛት፦</b> ${session.monthsCount || 1} ወር\n` +
+      `• <b>መጠን፦</b> <code>${formatMoney(session.amountCents, currency)}</code>\n` +
+      `• <b>የክፍያ መንገድ፦</b> ${formatPaymentMethod(paymentMethod)}\n\n` +
+      `📸 <b>እባክዎ አሁን የባንክ ክፍያዎን ደረሰኝ (ስክሪንሽት) በፎቶ ይላኩ፦</b>\n` +
+      `<i>(የCBE Mobile Banking ወይም CBE Birr ማረጋገጫ ፎቶውን ይላኩ። ከፈለጉ የደረሰኙን መለያ ቁጥር በጽሑፍ አብረው መላክ ይችላሉ)</i>`,
       {
-        parse_mode: 'Markdown',
-        ...getCancelReplyKeyboard(),
+        parse_mode: 'HTML',
+        ...getCancelReplyKeyboard('am'),
       }
     );
   });

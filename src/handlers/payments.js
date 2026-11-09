@@ -412,6 +412,12 @@ function registerPaymentHandlers(bot) {
 
     const yearMonth = ctx.match[1];
     const obligation = getOrCreateObligation(session.memberId, yearMonth);
+    if (obligation.status === 'FULLY_PAID') {
+      return ctx.reply(
+        `⚠️ <b>የ${formatDualMonth(yearMonth)} መዋጮ አስቀድሞ ሙሉ በሙሉ ተከፍሏል።</b>\nደጋግሞ መክፈል አይቻልም።`,
+        { parse_mode: 'HTML' }
+      );
+    }
     const currency = getCurrency();
     const balanceCents = Math.max(0, obligation.amount_due_cents - obligation.amount_paid_cents);
 

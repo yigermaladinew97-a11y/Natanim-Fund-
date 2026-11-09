@@ -1,6 +1,14 @@
 const crypto = require('node:crypto');
 const { getDatabase } = require('../db');
-const { getCurrentYearMonth, getDueDateForMonth, getNextMonthsList } = require('../utils/formatters');
+const {
+  getCurrentYearMonth,
+  getDueDateForMonth,
+  getNextMonthsList,
+  getNextAcademicMonth,
+  isAcademicMonth,
+  formatDualMonth,
+  formatMoney,
+} = require('../utils/formatters');
 const { isValidYearMonth, isValidPaymentMethod, sanitizeText } = require('../utils/validators');
 
 function getSetting(key, fallback = null) {
@@ -228,6 +236,9 @@ function recordPayment({
   const tx = db.transaction(() => {
     // 1. Get or create obligation
     const obligation = getOrCreateObligation(memberId, month);
+    if (obligation.status === 'FULLY_PAID') {
+      throw new Error(`የ${formatDualMonth(month)} መዋጮ አስቀድሞ ሙሉ በሙሉ ተከፍሏል።`);
+    }
 
     // 2. Generate unique TX ID
     const txId = generateTxId();
@@ -552,8 +563,28 @@ function createPaymentSubmission({
     throw new Error('Invalid year-month format (expected YYYY-MM).');
   }
 
-  if (!Number.isInteger(amountCents) || amountCents <= 0) {
-    throw new Error('Payment amount must be a positive integer in cents.');
+  const cleanMonthsCount = Math.max(1, parseInt(monthsCount, 10) || 1);
+
+  // Check 1: Obligation cannot be already FULLY_PAID
+  const existingObligation = db.prepare('SELECT status FROM obligations WHERE member_id = ? AND year_month = ?').get(memberId, yearMonth);
+  if (existingObligation && existingObligation.status === 'FULLY_PAID') {
+    throw new Error(`የ${formatDualMonth(yearMonth)} መዋጮ አስቀድሞ ሙሉ በሙሉ ተከፍሏል። ደጋግሞ መክፈል አይቻልም።`);
+  }
+
+  // Check 2: No duplicate PENDING submission
+  const pendingSub = db.prepare(`
+    SELECT id FROM payment_submissions 
+    WHERE member_id = ? AND year_month = ? AND status = 'PENDING'
+  `).get(memberId, yearMonth);
+  if (pendingSub) {
+    throw new Error(`ለ${formatDualMonth(yearMonth)} ያስገቡት ደረሰኝ በአስተዳዳሪዎች በመታየት ላይ ነው። እባክዎ በትዕግስት ይጠብቁ።`);
+  }
+
+  // Check 3: Minimum payment amount check (minimum standardAmount * cleanMonthsCount)
+  const standardAmount = getStandardAmountCents();
+  const minRequiredCents = cleanMonthsCount * standardAmount;
+  if (!Number.isInteger(amountCents) || amountCents < minRequiredCents) {
+    throw new Error(`አነስተኛው የክፍያ መጠን ${formatMoney(minRequiredCents, getCurrency())} ነው።`);
   }
 
   if (!isValidPaymentMethod(paymentMethod)) {
@@ -564,7 +595,6 @@ function createPaymentSubmission({
     throw new Error('Screenshot photo or receipt image is required.');
   }
 
-  const cleanMonthsCount = Math.max(1, parseInt(monthsCount, 10) || 1);
   const cleanRef = sanitizeText(referenceNumber, 100);
   const cleanCap = sanitizeText(caption, 255);
 
@@ -790,6 +820,73 @@ async function notifyStaffNewPaymentSubmission(telegram, submission) {
   }
 }
 
+function getEligibleSubmissionMonths(memberId, count = 3) {
+  const db = getDatabase();
+  const curMonth = getCurrentYearMonth();
+  const startAcademic = isAcademicMonth(curMonth) ? curMonth : getNextAcademicMonth(curMonth, 1);
+  const prevAcademic = getNextAcademicMonth(startAcademic, -1);
+
+  // Check candidate academic months starting from previous month, current, and upcoming
+  const candidates = [prevAcademic, startAcademic];
+  let cur = startAcademic;
+  for (let i = 1; i <= 8; i++) {
+    cur = getNextAcademicMonth(cur, 1);
+    candidates.push(cur);
+  }
+
+  const eligible = [];
+  for (const m of candidates) {
+    if (!isAcademicMonth(m)) continue;
+    // Check if fully paid
+    const obl = db.prepare('SELECT status FROM obligations WHERE member_id = ? AND year_month = ?').get(memberId, m);
+    if (obl && obl.status === 'FULLY_PAID') {
+      continue;
+    }
+    // Check if pending submission exists
+    const pending = db.prepare("SELECT id FROM payment_submissions WHERE member_id = ? AND year_month = ? AND status = 'PENDING'").get(memberId, m);
+    if (pending) {
+      continue;
+    }
+    if (!eligible.includes(m)) {
+      eligible.push(m);
+    }
+    if (eligible.length >= count) break;
+  }
+
+  return eligible;
+}
+
+function validateSubmissionMonth(memberId, month) {
+  if (!isValidYearMonth(month)) {
+    return {
+      ok: false,
+      error: '❌ የተሳሳተ የወር ቅርጸት። እባክዎ YYYY-MM (ለምሳሌ <code>2026-10</code>) ያስገቡ።',
+    };
+  }
+  if (!isAcademicMonth(month)) {
+    return {
+      ok: false,
+      error: `⚠️ <b>${formatDualMonth(month)} የዕረፍት ወር ነው።</b>\nመዋጮ የሚሰበሰበው ከጥቅምት እስከ ሰኔ ባሉት 9 ወራት ብቻ ነው። እባክዎ የትምህርት ወር ይምረጡ።`,
+    };
+  }
+  const db = getDatabase();
+  const existingObl = db.prepare('SELECT status FROM obligations WHERE member_id = ? AND year_month = ?').get(memberId, month);
+  if (existingObl && existingObl.status === 'FULLY_PAID') {
+    return {
+      ok: false,
+      error: `⚠️ <b>የ${formatDualMonth(month)} መዋጮዎን አስቀድመው ሙሉ በሙሉ ከፍለዋል!</b>\nእባክዎ ያልተከፈለ ወር ይምረጡ።`,
+    };
+  }
+  const pending = db.prepare("SELECT id FROM payment_submissions WHERE member_id = ? AND year_month = ? AND status = 'PENDING'").get(memberId, month);
+  if (pending) {
+    return {
+      ok: false,
+      error: `⏳ <b>ለ${formatDualMonth(month)} ያስገቡት ደረሰኝ በአስተዳዳሪዎች በመታየት ላይ ነው!</b>\nእባክዎ ማረጋገጫውን በትዕግስት ይጠብቁ።`,
+    };
+  }
+  return { ok: true };
+}
+
 module.exports = {
   getSetting,
   setSetting,
@@ -810,6 +907,8 @@ module.exports = {
   listUnpaidMembersForMonth,
   getPaymentByTxId,
   createPaymentSubmission,
+  getEligibleSubmissionMonths,
+  validateSubmissionMonth,
   getPendingPaymentSubmissions,
   getPaymentSubmissionById,
   approvePaymentSubmission,
