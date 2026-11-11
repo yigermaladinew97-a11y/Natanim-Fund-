@@ -25,6 +25,7 @@ const { parseMoneyToCents, formatMoney, escapeHtml, getCurrentYearMonth, formatD
 const { isValidTelegramId, sanitizeText } = require('../utils/validators');
 const { getCancelKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
 const {
+  getStaffGroupId,
   setStaffGroupId,
   getStaffGroupDetails,
   getOrCreateTopic,
