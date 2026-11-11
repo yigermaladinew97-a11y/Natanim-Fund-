@@ -304,17 +304,37 @@ async function postMonthlyReportToStaffGroup(telegram, yearMonth) {
  */
 async function inviteTreasurerToStaffGroup(telegram, targetId, memberName) {
   const groupId = getStaffGroupId();
-  if (!groupId || !telegram) return null;
+  if (!groupId || !telegram) {
+    console.warn('[StaffArchive] Cannot invite treasurer: staff group ID is not set. Use /setstaffgroup.');
+    return null;
+  }
 
   let inviteLink = null;
+  const safeName = `Treasurer - ${memberName || targetId}`.slice(0, 32);
+
   try {
     const linkObj = await telegram.createChatInviteLink(groupId, {
-      name: `Treasurer Invite - ${memberName || targetId}`,
+      name: safeName,
       member_limit: 1,
     });
-    inviteLink = linkObj.invite_link;
+    inviteLink = linkObj?.invite_link || null;
   } catch (err) {
-    console.warn(`[StaffArchive] Could not generate invite link for ${targetId}:`, err.message);
+    console.warn(`[StaffArchive] createChatInviteLink with name failed for ${targetId}:`, err.message);
+    try {
+      // Fallback 1: createChatInviteLink without name parameter (max compatibility)
+      const linkObj = await telegram.createChatInviteLink(groupId, {
+        member_limit: 1,
+      });
+      inviteLink = linkObj?.invite_link || null;
+    } catch (err2) {
+      console.warn(`[StaffArchive] createChatInviteLink without name failed:`, err2.message);
+      try {
+        // Fallback 2: export primary chat invite link
+        inviteLink = await telegram.exportChatInviteLink(groupId);
+      } catch (err3) {
+        console.warn(`[StaffArchive] exportChatInviteLink fallback failed:`, err3.message);
+      }
+    }
   }
 
   // Announce in staff group

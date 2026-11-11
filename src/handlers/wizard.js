@@ -5,6 +5,7 @@ const {
   registerMember,
   deactivateMember,
   getMemberById,
+  getMemberByTelegramId,
   getAllActiveMembers,
   createRegistrationRequest,
   notifyAdminsNewRegistration,
@@ -35,7 +36,7 @@ const {
 const { getPaymentMethodKeyboard, getCancelKeyboard, getCancelReplyKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
 const { showPaymentConfirmation } = require('./payments');
 const { assignRole } = require('../services/permissions');
-const { inviteTreasurerToStaffGroup } = require('../services/staffArchive');
+const { inviteTreasurerToStaffGroup, getStaffGroupId } = require('../services/staffArchive');
 const { isTursoConfigured, pushToTurso } = require('../services/tursoService');
 
 const MENU_BUTTON_PATTERNS = [
@@ -745,13 +746,17 @@ function registerWizardHandler(bot) {
       clearSession(userId);
       try {
         assignRole(targetId, 'treasurer', userId);
-        const member = getMemberById(targetId) || null;
-        const inviteLink = await inviteTreasurerToStaffGroup(ctx.telegram, targetId, member?.full_name);
+        const member = getMemberByTelegramId(targetId) || null;
+        const memberName = member?.full_name || null;
+        const inviteLink = await inviteTreasurerToStaffGroup(ctx.telegram, targetId, memberName);
 
         const inlineButtons = [];
         if (inviteLink) {
           inlineButtons.push([Markup.button.url('🏛️ Join Staff Group / ግሩፑን ተቀላቀል', inviteLink)]);
         }
+
+        let dmSent = false;
+        let dmError = null;
 
         // Push updated keyboard & invite link to the new treasurer
         try {
@@ -767,16 +772,43 @@ function registerWizardHandler(bot) {
               ...getMainMenuKeyboard('treasurer'),
             }
           );
+          dmSent = true;
         } catch (dmErr) {
+          dmError = dmErr.message;
           console.warn(`[Roles] Could not push keyboard to user ${targetId}:`, dmErr.message);
         }
 
+        const displayName = memberName || targetId;
+        let adminMsg = `✅ Successfully granted <b>Treasurer</b> role to <b>${escapeHtml(displayName)}</b> (<code>${escapeHtml(targetId)}</code>).\n\n`;
+        adminMsg += `• Menu buttons automatically updated on their device\n`;
+
+        const adminButtons = [];
+        if (inviteLink) {
+          adminMsg += `\n🔗 <b>Leadership Group Invite Link:</b>\n<code>${inviteLink}</code>\n\n`;
+          if (dmSent) {
+            adminMsg += `• ✅ Link was sent directly to their private chat.\n`;
+          } else {
+            adminMsg += `• ⚠️ <b>Could not DM user:</b> They have not started the bot privately yet (or blocked it).\n👉 <b>Please copy and share the link above directly with them!</b>\n`;
+          }
+          adminMsg += `• Welcome announcement posted in leadership group.`;
+          adminButtons.push([Markup.button.url('🏛️ Open Group Invite Link', inviteLink)]);
+        } else {
+          const staffGroupId = getStaffGroupId();
+          if (!staffGroupId) {
+            adminMsg += `\n⚠️ <b>Staff Group Not Connected:</b>\n` +
+                   `The bot cannot generate an invite link because the leadership group is not set.\n` +
+                   `👉 Add the bot to your leadership group as Admin, then send <code>/setstaffgroup</code> in that group!`;
+          } else {
+            adminMsg += `\n⚠️ <b>Could not create invite link:</b>\n` +
+                   `Make sure the bot is an <b>Administrator</b> in your leadership group with <b>"Invite Users via Link"</b> enabled!`;
+          }
+        }
+
         return ctx.reply(
-          `✅ Successfully granted <b>Treasurer</b> role to Telegram ID <code>${escapeHtml(targetId)}</code>.\n\n` +
-          `• Menu buttons automatically updated on their device\n` +
-          (inviteLink ? `• One-time group invite link sent directly to their private chat\n• Welcome announcement posted in leadership group` : `• <i>(Tip: Link staff group with /setstaffgroup for automatic group invite)</i>`),
+          adminMsg,
           {
             parse_mode: 'HTML',
+            ...(adminButtons.length > 0 ? Markup.inlineKeyboard(adminButtons) : {}),
             ...getMainMenuKeyboard(ctx.state?.role),
           }
         );

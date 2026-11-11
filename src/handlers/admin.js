@@ -560,6 +560,9 @@ function registerAdminHandlers(bot) {
         inlineButtons.push([Markup.button.url('🏛️ Join Staff Group / ግሩፑን ተቀላቀል', inviteLink)]);
       }
 
+      let dmSent = false;
+      let dmError = null;
+
       try {
         await telegram.sendMessage(
           targetId,
@@ -573,17 +576,21 @@ function registerAdminHandlers(bot) {
             ...getMainMenuKeyboard('treasurer'),
           }
         );
+        dmSent = true;
       } catch (dmErr) {
+        dmError = dmErr.message;
         console.warn(`[Roles] Could not send direct notification to user ${targetId}:`, dmErr.message);
       }
 
-      return { inviteLink };
+      return { inviteLink, memberName, dmSent, dmError };
     } else {
       // 1. Automatically remove former treasurer from staff group & announce
       const removalResult = await removeTreasurerFromStaffGroup(telegram, targetId, memberName);
 
       // 2. DM former treasurer
       const fallbackRole = member && member.status === 'active' ? 'member' : 'unregistered';
+      let dmSent = false;
+      let dmError = null;
       try {
         await telegram.sendMessage(
           targetId,
@@ -596,11 +603,13 @@ function registerAdminHandlers(bot) {
             ...getMainMenuKeyboard(fallbackRole),
           }
         );
+        dmSent = true;
       } catch (dmErr) {
+        dmError = dmErr.message;
         console.warn(`[Roles] Could not send direct notification to user ${targetId}:`, dmErr.message);
       }
 
-      return { removalResult };
+      return { removalResult, memberName, dmSent, dmError };
     }
   }
 
@@ -645,21 +654,47 @@ function registerAdminHandlers(bot) {
         try {
           assignRole(targetId, 'treasurer', ctx.from.id);
           const notifyRes = await notifyUserRoleChanged(ctx.telegram, targetId, 'treasurer');
-          return ctx.reply(
-            `✅ Successfully granted <b>Treasurer</b> role to Telegram ID <code>${escapeHtml(targetId)}</code>.\n\n` +
-            `• Menu keyboard automatically upgraded on their device\n` +
-            (notifyRes.inviteLink ? `• One-time group invite link sent directly to their private chat\n• Welcome announcement posted in leadership group` : `• <i>(Tip: Link staff group with /setstaffgroup for automatic group invite)</i>`),
-            { parse_mode: 'HTML' }
-          );
+          const displayName = notifyRes.memberName || targetId;
+
+          let msg = `✅ Successfully granted <b>Treasurer</b> role to <b>${escapeHtml(displayName)}</b> (<code>${escapeHtml(targetId)}</code>).\n\n`;
+          msg += `• Menu keyboard upgraded on their device\n`;
+
+          const adminButtons = [];
+          if (notifyRes.inviteLink) {
+            msg += `\n🔗 <b>Leadership Group Invite Link:</b>\n<code>${notifyRes.inviteLink}</code>\n\n`;
+            if (notifyRes.dmSent) {
+              msg += `• ✅ Link was sent directly to their private chat.\n`;
+            } else {
+              msg += `• ⚠️ <b>Could not DM user:</b> The user has not started the bot privately yet (or blocked it).\n👉 <b>Please copy and share the link above directly with them!</b>\n`;
+            }
+            msg += `• Welcome announcement posted in leadership group.`;
+            adminButtons.push([Markup.button.url('🏛️ Open Group Invite Link', notifyRes.inviteLink)]);
+          } else {
+            const staffGroupId = getStaffGroupId();
+            if (!staffGroupId) {
+              msg += `\n⚠️ <b>Staff Group Not Connected:</b>\n` +
+                     `The bot cannot generate an invite link because the leadership group is not set.\n` +
+                     `👉 Add the bot to your leadership group as Admin, then send <code>/setstaffgroup</code> in that group!`;
+            } else {
+              msg += `\n⚠️ <b>Could not create invite link:</b>\n` +
+                     `Make sure the bot is an <b>Administrator</b> in your leadership group with <b>"Invite Users via Link"</b> enabled!`;
+            }
+          }
+
+          return ctx.reply(msg, {
+            parse_mode: 'HTML',
+            ...(adminButtons.length > 0 ? Markup.inlineKeyboard(adminButtons) : {}),
+          });
         } catch (err) {
           return ctx.reply(`❌ Failed to assign role: ${err.message}`);
         }
       } else if (subAction === 'remove' || subAction === 'revoke') {
         try {
           revokeRole(targetId, ctx.from.id);
-          await notifyUserRoleChanged(ctx.telegram, targetId, 'member');
+          const revokeRes = await notifyUserRoleChanged(ctx.telegram, targetId, 'member');
+          const displayName = revokeRes.memberName || targetId;
           return ctx.reply(
-            `✅ Successfully revoked staff role from Telegram ID <code>${escapeHtml(targetId)}</code>.\n\n` +
+            `✅ Successfully revoked staff role from <b>${escapeHtml(displayName)}</b> (<code>${escapeHtml(targetId)}</code>).\n\n` +
             `• Menu keyboard returned to regular member access\n` +
             `• Automatically removed from the leadership staff group\n` +
             `• Staff group notified`,
@@ -673,6 +708,35 @@ function registerAdminHandlers(bot) {
 
     const { text: msg, keyboard } = getRolesView();
     return ctx.reply(msg, { parse_mode: 'HTML', ...keyboard });
+  });
+
+  bot.command(['stafflink', 'grouplink'], requireAdmin, async (ctx) => {
+    const groupId = getStaffGroupId();
+    if (!groupId) {
+      return ctx.reply(
+        '⚠️ <b>Staff Group Not Connected</b>\n\n' +
+        'Please add the bot to your leadership group as an Administrator and send <code>/setstaffgroup</code> inside that group first.',
+        { parse_mode: 'HTML' }
+      );
+    }
+
+    try {
+      const inviteLink = await inviteTreasurerToStaffGroup(ctx.telegram, ctx.from.id, 'Admin Request');
+      if (inviteLink) {
+        return ctx.reply(
+          `🏛️ <b>Leadership Group Invite Link:</b>\n\n` +
+          `<code>${inviteLink}</code>\n\n` +
+          `<i>You can share this link with any approved church staff or treasurer to join the leadership group.</i>`,
+          {
+            parse_mode: 'HTML',
+            ...Markup.inlineKeyboard([[Markup.button.url('🏛️ Join Leadership Group', inviteLink)]]),
+          }
+        );
+      }
+      return ctx.reply('⚠️ Could not generate invite link. Ensure the bot is an Administrator in the group with "Invite Users via Link" enabled.');
+    } catch (err) {
+      return ctx.reply(`❌ Failed to generate invite link: ${err.message}`);
+    }
   });
 
   bot.hears(/^(?:🛡️\s*)?(?:Manage Roles|ሚናዎች)$/i, requireAdmin, async (ctx) => {
@@ -883,6 +947,9 @@ function registerAdminHandlers(bot) {
     }
 
     setStaffGroupId(chatId, chatTitle, senderId);
+    if (isTursoConfigured()) {
+      pushToTurso().catch((e) => console.warn('[Turso] Async set staff group push notice:', e.message));
+    }
 
     let topicNotice = '';
     if (isForum) {
