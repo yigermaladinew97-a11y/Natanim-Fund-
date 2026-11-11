@@ -343,7 +343,8 @@ async function inviteTreasurerToStaffGroup(telegram, targetId, memberName) {
     await telegram.sendMessage(
       groupId,
       `🤝 <b>አዲስ ገንዘብ ያዥ / New Treasurer Appointed!</b>\n\n` +
-      `Please welcome <b>${escapeHtml(displayName)}</b> to the fellowship leadership team as <b>Treasurer</b>! 🎉`,
+      `Please welcome <b>${escapeHtml(displayName)}</b> to the fellowship leadership team as <b>Treasurer</b>! 🎉\n` +
+      `They now have full access to view monthly reports, verify member payment receipts, and assist in fund administration.`,
       { parse_mode: 'HTML' }
     );
   } catch (err) {

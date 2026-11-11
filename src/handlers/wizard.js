@@ -752,7 +752,7 @@ function registerWizardHandler(bot) {
 
         const inlineButtons = [];
         if (inviteLink) {
-          inlineButtons.push([Markup.button.url('🏛️ Join Staff Group / ግሩፑን ተቀላቀል', inviteLink)]);
+          inlineButtons.push([Markup.button.url('🏛️ Join Admin & Staff Group / ግሩፑን ተቀላቀል', inviteLink)]);
         }
 
         let dmSent = false;
@@ -764,8 +764,8 @@ function registerWizardHandler(bot) {
             targetId,
             `🎉 <b>Role Updated! / አዲስ ኃላፊነት ተሰጥቶዎታል!</b>\n\n` +
             `You have been granted <b>Treasurer (ገንዘብ ያዥ)</b> privileges for Natanim Church Fund by an administrator.\n\n` +
-            `• <b>Staff Tools:</b> Your menu buttons below have been automatically upgraded with full financial tools (Record Payment, Monthly Report, Members List, Verify Receipts).\n` +
-            (inviteLink ? `• <b>Leadership Group:</b> Tap below to join the leadership staff group!\n` : ''),
+            `• <b>Staff Tools:</b> Your menu buttons below have been automatically upgraded with full financial tools (Record Payment, Monthly Reports, Members List, Verify Receipts).\n` +
+            (inviteLink ? `• <b>Leadership Group:</b> Tap the button below to join the Admin & Bot Leadership Group to view monthly reports, verify payment receipts, and stay updated!\n` : ''),
             {
               parse_mode: 'HTML',
               ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),

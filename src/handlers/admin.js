@@ -558,7 +558,7 @@ function registerAdminHandlers(bot) {
       // 2. Prepare inline keyboard for DM with invite button if available
       const inlineButtons = [];
       if (inviteLink) {
-        inlineButtons.push([Markup.button.url('🏛️ Join Staff Group / ግሩፑን ተቀላቀል', inviteLink)]);
+        inlineButtons.push([Markup.button.url('🏛️ Join Admin & Staff Group / ግሩፑን ተቀላቀል', inviteLink)]);
       }
 
       let dmSent = false;
@@ -570,7 +570,7 @@ function registerAdminHandlers(bot) {
           `🎉 <b>Role Updated! / አዲስ ኃላፊነት ተሰጥቶዎታል!</b>\n\n` +
           `You have been appointed as <b>Treasurer (ገንዘብ ያዥ)</b> for Natanim Church Fund by an administrator.\n\n` +
           `• <b>Staff Tools:</b> Your menu buttons below have been automatically upgraded with full financial tools (Record Payment, Monthly Reports, Verify Receipts).\n` +
-          (inviteLink ? `• <b>Leadership Group:</b> Tap the button below to join the staff archive group!\n` : ''),
+          (inviteLink ? `• <b>Leadership Group:</b> Tap the button below to join the Admin & Bot Leadership Group to view monthly reports, verify payment receipts, and stay updated!\n` : ''),
           {
             parse_mode: 'HTML',
             ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
@@ -628,7 +628,10 @@ function registerAdminHandlers(bot) {
     msg += `• Or revoke with: <code>/roles remove &lt;telegram_id&gt;</code>`;
 
     const buttons = [];
-    buttons.push([Markup.button.callback('➕ Add Treasurer', 'admin_role_prompt_add')]);
+    buttons.push([
+      Markup.button.callback('➕ Add Treasurer', 'admin_role_prompt_add'),
+      Markup.button.callback('🏛️ Group Invite Link', 'admin_role_get_link'),
+    ]);
 
     const treasurers = rolesList.filter((r) => r.role === 'treasurer');
     for (const t of treasurers) {
@@ -711,7 +714,7 @@ function registerAdminHandlers(bot) {
     return ctx.reply(msg, { parse_mode: 'HTML', ...keyboard });
   });
 
-  bot.command(['stafflink', 'grouplink'], requireAdmin, async (ctx) => {
+  bot.command(['stafflink', 'stafflinks', 'grouplink', 'grouplinks'], requireAdmin, async (ctx) => {
     const groupId = getStaffGroupId();
     if (!groupId) {
       return ctx.reply(
@@ -762,6 +765,36 @@ function registerAdminHandlers(bot) {
         ...getCancelKeyboard(),
       }
     );
+  });
+
+  bot.action('admin_role_get_link', requireAdmin, async (ctx) => {
+    await ctx.answerCbQuery();
+    const groupId = getStaffGroupId();
+    if (!groupId) {
+      return ctx.reply(
+        '⚠️ <b>Staff Group Not Connected</b>\n\n' +
+        'Please add the bot to your leadership group as an Administrator and send <code>/setstaffgroup</code> inside that group first.',
+        { parse_mode: 'HTML' }
+      );
+    }
+
+    try {
+      const inviteLink = await inviteTreasurerToStaffGroup(ctx.telegram, ctx.from.id, 'Admin Request');
+      if (inviteLink) {
+        return ctx.reply(
+          `🏛️ <b>Leadership Group Invite Link:</b>\n\n` +
+          `<code>${inviteLink}</code>\n\n` +
+          `<i>You can share this link with any approved church staff or treasurer to join the leadership group.</i>`,
+          {
+            parse_mode: 'HTML',
+            ...Markup.inlineKeyboard([[Markup.button.url('🏛️ Join Leadership Group', inviteLink)]]),
+          }
+        );
+      }
+      return ctx.reply('⚠️ Could not generate invite link. Ensure the bot is an Administrator in the group with "Invite Users via Link" enabled.');
+    } catch (err) {
+      return ctx.reply(`❌ Failed to generate invite link: ${err.message}`);
+    }
   });
 
   bot.action(/^admin_role_revoke_(\d+)$/, requireAdmin, async (ctx) => {
