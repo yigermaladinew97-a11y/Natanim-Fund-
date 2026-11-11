@@ -6,7 +6,7 @@ function requirePrivateChat(ctx, next) {
   if (ctx.chat && ctx.chat.type !== 'private') {
     const text = (ctx.message?.text || '').trim();
     // Allow staff group configuration commands inside groups
-    if (/^\/(setstaffgroup|staffstatus|initfolders|createmonths|sendreport|postreport|helpstaff)(?:@\w+)?(?:\s|$)/i.test(text)) {
+    if (/^\/(setstaffgroup|staffstatus|initfolders|createmonths|sendreport|postreport|helpstaff|stafflink|grouplink)(?:@\w+)?(?:\s|$)/i.test(text)) {
       return next();
     }
     // Allow group service messages (bot added, group created, topic created)
