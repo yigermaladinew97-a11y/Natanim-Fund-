@@ -1,3 +1,4 @@
+const { Markup } = require('telegraf');
 const { getDatabase } = require('../db');
 const {
   formatMoney,
@@ -10,6 +11,8 @@ const {
 } = require('../utils/formatters');
 const { config } = require('../config');
 const { getMonthlyReportSummary, exportMonthlyReportCsv, formatMonthlyReportHtml } = require('./reporting');
+const { getMemberByTelegramId } = require('./memberService');
+const { getMainMenuKeyboard } = require('../utils/keyboards');
 
 /**
  * Staff Archive Group & Forum Topic (Folder) Management Service
@@ -60,6 +63,31 @@ function setStaffGroupId(groupId, groupTitle, actorTelegramId) {
 
   save();
   return getStaffGroupDetails();
+}
+
+function getStaffGroupInviteLink() {
+  const db = getDatabase();
+  const row = db.prepare("SELECT value FROM settings WHERE key = 'staff_group_invite_link'").get();
+  return row?.value || null;
+}
+
+function setStaffGroupInviteLink(link, actorTelegramId) {
+  const db = getDatabase();
+  const cleanLink = link ? String(link).trim() : null;
+  db.prepare(`
+    INSERT INTO settings (key, value) VALUES ('staff_group_invite_link', ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).run(cleanLink);
+
+  if (actorTelegramId) {
+    db.prepare(`
+      INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
+      VALUES (?, ?, ?, ?, ?)
+    `).run('SET_STAFF_INVITE_LINK', 'settings', 'staff_group_invite_link', String(actorTelegramId), JSON.stringify({
+      inviteLink: cleanLink,
+    }));
+  }
+  return cleanLink;
 }
 
 function getMonthTopicKey(yearMonth) {
@@ -337,6 +365,11 @@ async function inviteTreasurerToStaffGroup(telegram, targetId, memberName) {
     }
   }
 
+  // Fallback 3: Stored manual staff group invite link from settings
+  if (!inviteLink) {
+    inviteLink = getStaffGroupInviteLink();
+  }
+
   // Announce in staff group
   try {
     const displayName = memberName || `User ${targetId}`;
@@ -352,6 +385,99 @@ async function inviteTreasurerToStaffGroup(telegram, targetId, memberName) {
   }
 
   return inviteLink;
+}
+
+/**
+ * Notify newly appointed treasurer via direct message with both inline button
+ * and copyable link text, and update their persistent menu keyboard.
+ */
+async function notifyTreasurerAppointed(telegram, targetId, assignedByName = 'an administrator') {
+  const member = getMemberByTelegramId(targetId);
+  const memberName = member?.full_name || null;
+
+  // 1. Generate exclusive single-use invite link to staff group & post welcome
+  const inviteLink = await inviteTreasurerToStaffGroup(telegram, targetId, memberName);
+
+  let dmSent = false;
+  let dmError = null;
+
+  try {
+    // Message 1: Role appointment notice with direct copyable invite link & inline button
+    const inviteMsg =
+      `🎉 <b>Role Updated! / አዲስ ኃላፊነት ተሰጥቶዎታል!</b>\n\n` +
+      `You have been appointed as <b>Treasurer (ገንዘብ ያዥ)</b> for Natanim Church Fund by ${escapeHtml(assignedByName)}.\n\n` +
+      `• <b>ኃላፊነት / Staff Privileges:</b> As a Treasurer, you have access to view monthly financial reports, verify member payment receipts, and record contributions.\n\n` +
+      (inviteLink
+        ? `🏛️ <b>የአመራር ግሩፕ መጋበዣ ሊንክ / Leadership Group Invite:</b>\n` +
+          `ወርሃዊ ሪፖርቶችን እና የክፍያ ደረሰኞችን ለመከታተል እባክዎ ከታች ያለውን ሊንክ ወይም ቁልፍ በመጫን የአመራር ግሩፑን ይቀላቀሉ፦\n\n` +
+          `👉 <code>${inviteLink}</code>\n\n`
+        : '') +
+      `<i>እግዚአብሔር በአገልግሎትዎ ይባርክዎ! 🙏</i>`;
+
+    const inlineKeyboard = inviteLink
+      ? Markup.inlineKeyboard([[Markup.button.url('🏛️ Join Admin & Staff Group / ግሩፑን ተቀላቀል', inviteLink)]])
+      : undefined;
+
+    await telegram.sendMessage(targetId, inviteMsg, {
+      parse_mode: 'HTML',
+      ...(inlineKeyboard || {}),
+    });
+
+    // Message 2: Push persistent staff menu buttons (Reply Keyboard)
+    // Note: Sent separately because Telegram does not allow inline_keyboard and reply_keyboard in one message.
+    await telegram.sendMessage(
+      targetId,
+      `💼 <b>Staff Menu Activated / የአስተዳዳሪ ሜኑ ተዘጋጅቷል</b>\n\n` +
+      `የገንዘብ ያዥ ሜኑ ቁልፎችዎ ከታች ባለው ሰሌዳ ላይ ተዘጋጅተዋል (ክፍያ መዝግብ፣ ወርሃዊ ሪፖርት፣ ደረሰኝ አረጋግጥ ወዘተ)።`,
+      {
+        parse_mode: 'HTML',
+        ...getMainMenuKeyboard('treasurer', 'am'),
+      }
+    );
+
+    dmSent = true;
+  } catch (dmErr) {
+    dmError = dmErr.message;
+    console.warn(`[Roles] Could not send direct notification to user ${targetId}:`, dmErr.message);
+  }
+
+  return { inviteLink, memberName, dmSent, dmError };
+}
+
+/**
+ * Notify former treasurer of role revocation via direct message and update menu keyboard.
+ */
+async function notifyTreasurerRevoked(telegram, targetId) {
+  const member = getMemberByTelegramId(targetId);
+  const memberName = member?.full_name || null;
+
+  // 1. Automatically remove former treasurer from staff group & announce
+  const removalResult = await removeTreasurerFromStaffGroup(telegram, targetId, memberName);
+
+  // 2. DM former treasurer
+  const fallbackRole = member && member.status === 'active' ? 'member' : 'unregistered';
+  let dmSent = false;
+  let dmError = null;
+
+  try {
+    await telegram.sendMessage(
+      targetId,
+      `ℹ️ <b>Staff Role Update / የኃላፊነት ለውጥ</b>\n\n` +
+      `Your Treasurer privileges for Natanim Church Fund have been removed by an administrator.\n\n` +
+      `• Your menu buttons below have been returned to regular member access.\n` +
+      `Thank you for your service! 🙏`,
+      {
+        parse_mode: 'HTML',
+        ...getMainMenuKeyboard(fallbackRole, 'am'),
+      }
+    );
+    dmSent = true;
+  } catch (dmErr) {
+    dmError = dmErr.message;
+    console.warn(`[Roles] Could not send revocation notice to user ${targetId}:`, dmErr.message);
+  }
+
+  return { removalResult, memberName, dmSent, dmError };
 }
 
 /**
@@ -392,6 +518,8 @@ module.exports = {
   getStaffGroupId,
   getStaffGroupDetails,
   setStaffGroupId,
+  getStaffGroupInviteLink,
+  setStaffGroupInviteLink,
   getOrCreateTopic,
   initializeAcademicYearTopics,
   getMonthTopicKey,
@@ -402,5 +530,7 @@ module.exports = {
   postMonthlyReportToStaffGroup,
   inviteTreasurerToStaffGroup,
   removeTreasurerFromStaffGroup,
+  notifyTreasurerAppointed,
+  notifyTreasurerRevoked,
 };
 

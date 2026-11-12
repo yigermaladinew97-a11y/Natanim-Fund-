@@ -28,6 +28,8 @@ const {
   getStaffGroupId,
   setStaffGroupId,
   getStaffGroupDetails,
+  getStaffGroupInviteLink,
+  setStaffGroupInviteLink,
   getOrCreateTopic,
   initializeAcademicYearTopics,
   getMonthTopicKey,
@@ -35,6 +37,8 @@ const {
   getReportsTopicName,
   inviteTreasurerToStaffGroup,
   removeTreasurerFromStaffGroup,
+  notifyTreasurerAppointed,
+  notifyTreasurerRevoked,
 } = require('../services/staffArchive');
 const { createDatabaseBackup, sendDatabaseBackupToChat, restoreDatabaseFromBuffer } = require('../services/backupService');
 const { getSystemDiagnostics, formatDiagnosticsHtml } = require('../services/diagnosticsService');
@@ -547,73 +551,6 @@ function registerAdminHandlers(bot) {
   // ==========================================
   // /roles - Manage Treasurer roles
   // ==========================================
-  async function notifyUserRoleChanged(telegram, targetId, newRole) {
-    const member = getMemberByTelegramId(targetId);
-    const memberName = member?.full_name || null;
-
-    if (newRole === 'treasurer') {
-      // 1. Generate exclusive single-use invite link to staff group & post welcome
-      const inviteLink = await inviteTreasurerToStaffGroup(telegram, targetId, memberName);
-
-      // 2. Prepare inline keyboard for DM with invite button if available
-      const inlineButtons = [];
-      if (inviteLink) {
-        inlineButtons.push([Markup.button.url('🏛️ Join Admin & Staff Group / ግሩፑን ተቀላቀል', inviteLink)]);
-      }
-
-      let dmSent = false;
-      let dmError = null;
-
-      try {
-        await telegram.sendMessage(
-          targetId,
-          `🎉 <b>Role Updated! / አዲስ ኃላፊነት ተሰጥቶዎታል!</b>\n\n` +
-          `You have been appointed as <b>Treasurer (ገንዘብ ያዥ)</b> for Natanim Church Fund by an administrator.\n\n` +
-          `• <b>Staff Tools:</b> Your menu buttons below have been automatically upgraded with full financial tools (Record Payment, Monthly Reports, Verify Receipts).\n` +
-          (inviteLink ? `• <b>Leadership Group:</b> Tap the button below to join the Admin & Bot Leadership Group to view monthly reports, verify payment receipts, and stay updated!\n` : ''),
-          {
-            parse_mode: 'HTML',
-            ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
-            ...getMainMenuKeyboard('treasurer'),
-          }
-        );
-        dmSent = true;
-      } catch (dmErr) {
-        dmError = dmErr.message;
-        console.warn(`[Roles] Could not send direct notification to user ${targetId}:`, dmErr.message);
-      }
-
-      return { inviteLink, memberName, dmSent, dmError };
-    } else {
-      // 1. Automatically remove former treasurer from staff group & announce
-      const removalResult = await removeTreasurerFromStaffGroup(telegram, targetId, memberName);
-
-      // 2. DM former treasurer
-      const fallbackRole = member && member.status === 'active' ? 'member' : 'unregistered';
-      let dmSent = false;
-      let dmError = null;
-      try {
-        await telegram.sendMessage(
-          targetId,
-          `ℹ️ <b>Staff Role Update / የኃላፊነት ለውጥ</b>\n\n` +
-          `Your Treasurer privileges for Natanim Church Fund have been removed by an administrator.\n\n` +
-          `• Your menu buttons below have been returned to regular member access.\n` +
-          `• Your staff group membership has concluded.`,
-          {
-            parse_mode: 'HTML',
-            ...getMainMenuKeyboard(fallbackRole),
-          }
-        );
-        dmSent = true;
-      } catch (dmErr) {
-        dmError = dmErr.message;
-        console.warn(`[Roles] Could not send direct notification to user ${targetId}:`, dmErr.message);
-      }
-
-      return { removalResult, memberName, dmSent, dmError };
-    }
-  }
-
   function getRolesView() {
     const rolesList = listRoles();
     let msg = `🛡️ <b>Authorized System Roles</b>\n\n`;
@@ -625,6 +562,7 @@ function registerAdminHandlers(bot) {
     msg += `<b>Quick Actions:</b>\n`;
     msg += `• Tap <b>➕ Add Treasurer</b> to assign a member as Treasurer.\n`;
     msg += `• Or send command: <code>/roles add &lt;telegram_id&gt;</code>\n`;
+    msg += `• Tap <b>🔗 Send Link</b> to deliver group invite link directly to any treasurer.\n`;
     msg += `• Or revoke with: <code>/roles remove &lt;telegram_id&gt;</code>`;
 
     const buttons = [];
@@ -636,7 +574,10 @@ function registerAdminHandlers(bot) {
     const treasurers = rolesList.filter((r) => r.role === 'treasurer');
     for (const t of treasurers) {
       const label = t.full_name ? `❌ Revoke ${t.full_name}` : `❌ Revoke ${t.telegram_id}`;
-      buttons.push([Markup.button.callback(label, `admin_role_revoke_${t.telegram_id}`)]);
+      buttons.push([
+        Markup.button.callback(label, `admin_role_revoke_${t.telegram_id}`),
+        Markup.button.callback('🔗 Send Link', `admin_role_sendlink_${t.telegram_id}`),
+      ]);
     }
 
     return { text: msg, keyboard: Markup.inlineKeyboard(buttons) };
@@ -657,7 +598,7 @@ function registerAdminHandlers(bot) {
       if (subAction === 'add' || subAction === 'grant') {
         try {
           assignRole(targetId, 'treasurer', ctx.from.id);
-          const notifyRes = await notifyUserRoleChanged(ctx.telegram, targetId, 'treasurer');
+          const notifyRes = await notifyTreasurerAppointed(ctx.telegram, targetId, ctx.from.first_name || 'an administrator');
           const displayName = notifyRes.memberName || targetId;
 
           let msg = `✅ Successfully granted <b>Treasurer</b> role to <b>${escapeHtml(displayName)}</b> (<code>${escapeHtml(targetId)}</code>).\n\n`;
@@ -667,7 +608,7 @@ function registerAdminHandlers(bot) {
           if (notifyRes.inviteLink) {
             msg += `\n🔗 <b>Leadership Group Invite Link:</b>\n<code>${notifyRes.inviteLink}</code>\n\n`;
             if (notifyRes.dmSent) {
-              msg += `• ✅ Link was sent directly to their private chat.\n`;
+              msg += `• ✅ Link and staff menu was sent directly to their private chat.\n`;
             } else {
               msg += `• ⚠️ <b>Could not DM user:</b> The user has not started the bot privately yet (or blocked it).\n👉 <b>Please copy and share the link above directly with them!</b>\n`;
             }
@@ -695,7 +636,7 @@ function registerAdminHandlers(bot) {
       } else if (subAction === 'remove' || subAction === 'revoke') {
         try {
           revokeRole(targetId, ctx.from.id);
-          const revokeRes = await notifyUserRoleChanged(ctx.telegram, targetId, 'member');
+          const revokeRes = await notifyTreasurerRevoked(ctx.telegram, targetId);
           const displayName = revokeRes.memberName || targetId;
           return ctx.reply(
             `✅ Successfully revoked staff role from <b>${escapeHtml(displayName)}</b> (<code>${escapeHtml(targetId)}</code>).\n\n` +
@@ -728,6 +669,80 @@ function registerAdminHandlers(bot) {
       const inviteLink = await inviteTreasurerToStaffGroup(ctx.telegram, ctx.from.id, 'Admin Request');
       if (inviteLink) {
         return ctx.reply(
+          `🏛️ <b>Leadership Group Invite Link:</b>\n\n` +
+          `<code>${inviteLink}</code>\n\n` +
+          `<i>You can share this link with any approved church staff or treasurer to join the leadership group.</i>`,
+          {
+            parse_mode: 'HTML',
+            ...Markup.inlineKeyboard([[Markup.button.url('🏛️ Join Leadership Group', inviteLink)]]),
+          }
+        );
+      }
+      return ctx.reply('⚠️ Could not generate invite link. Ensure the bot is an Administrator in the group with "Invite Users via Link" enabled.');
+    } catch (err) {
+      return ctx.reply(`❌ Failed to generate invite link: ${err.message}`);
+    }
+  });
+
+  bot.command(['sendstafflink', 'invitetreasurer'], requireAdmin, async (ctx) => {
+    const text = ctx.message.text.trim();
+    const parts = text.split(/\s+/).slice(1);
+    if (parts.length < 1 || !isValidTelegramId(parts[0])) {
+      return ctx.reply(
+        'ℹ️ <b>Usage:</b> <code>/sendstafflink &lt;telegram_id&gt;</code>\n\n' +
+        'Example: <code>/sendstafflink 7997115682</code>\n\n' +
+        '<i>Generates an invite link and sends it directly to the treasurer, plus displays the link here for you.</i>',
+        { parse_mode: 'HTML' }
+      );
+    }
+    const targetId = parts[0];
+    try {
+      const res = await notifyTreasurerAppointed(ctx.telegram, targetId, ctx.from.first_name || 'Admin');
+      const name = res.memberName || targetId;
+
+      let msg = `🏛️ <b>Group Invite Link for ${escapeHtml(name)}</b> (<code>${escapeHtml(targetId)}</code>):\n\n`;
+      const buttons = [];
+
+      if (res.inviteLink) {
+        msg += `🔗 <code>${res.inviteLink}</code>\n\n`;
+        if (res.dmSent) {
+          msg += `• ✅ Link and staff menu successfully delivered to their private chat!`;
+        } else {
+          msg += `• ⚠️ <b>Could not DM user:</b> They have not started the bot privately yet.\n👉 <b>Please copy the link above and send it to them directly!</b>`;
+        }
+        buttons.push([Markup.button.url('🏛️ Open Group Invite Link', res.inviteLink)]);
+      } else {
+        msg += `⚠️ Could not generate invite link. Ensure the bot is an Administrator in the group with "Invite Users via Link" enabled.`;
+      }
+
+      return ctx.reply(msg, {
+        parse_mode: 'HTML',
+        ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
+      });
+    } catch (err) {
+      return ctx.reply(`❌ Failed to send invite link: ${err.message}`);
+    }
+  });
+
+  bot.command(['setstafflink', 'setgrouplink'], requireAdmin, async (ctx) => {
+    const text = ctx.message.text.trim();
+    const parts = text.split(/\s+/).slice(1);
+    if (parts.length < 1) {
+      const current = getStaffGroupInviteLink();
+      return ctx.reply(
+        `🏛️ <b>Staff Group Fallback Invite Link</b>\n\n` +
+        (current ? `Current fallback link: <code>${current}</code>\n\n` : `No fallback link currently set.\n\n`) +
+        `To set a permanent fallback link, send:\n<code>/setstafflink https://t.me/+YourLinkHere</code>`,
+        { parse_mode: 'HTML' }
+      );
+    }
+    const newLink = parts[0];
+    setStaffGroupInviteLink(newLink, ctx.from.id);
+    return ctx.reply(
+      `✅ <b>Staff group fallback invite link saved!</b>\n\n<code>${escapeHtml(newLink)}</code>\n\nThis link will be used as a guaranteed fallback whenever inviting treasurers.`,
+      { parse_mode: 'HTML' }
+    );
+  });
           `🏛️ <b>Leadership Group Invite Link:</b>\n\n` +
           `<code>${inviteLink}</code>\n\n` +
           `<i>You can share this link with any approved church staff or treasurer to join the leadership group.</i>`,
@@ -797,12 +812,43 @@ function registerAdminHandlers(bot) {
     }
   });
 
+  bot.action(/^admin_role_sendlink_(\d+)$/, requireAdmin, async (ctx) => {
+    await ctx.answerCbQuery('Sending group invite link...');
+    const targetId = ctx.match[1];
+    try {
+      const res = await notifyTreasurerAppointed(ctx.telegram, targetId, ctx.from.first_name || 'Admin');
+      const name = res.memberName || targetId;
+
+      let msg = `🏛️ <b>Group Invite Link for ${escapeHtml(name)}</b> (<code>${escapeHtml(targetId)}</code>):\n\n`;
+      const buttons = [];
+
+      if (res.inviteLink) {
+        msg += `🔗 <code>${res.inviteLink}</code>\n\n`;
+        if (res.dmSent) {
+          msg += `• ✅ Link and staff menu successfully delivered to their private chat!`;
+        } else {
+          msg += `• ⚠️ <b>Could not DM user:</b> They have not started the bot privately yet.\n👉 <b>Please copy the link above and send it to them directly!</b>`;
+        }
+        buttons.push([Markup.button.url('🏛️ Open Group Invite Link', res.inviteLink)]);
+      } else {
+        msg += `⚠️ Could not generate invite link. Ensure the bot is an Administrator in the group with "Invite Users via Link" enabled.`;
+      }
+
+      return ctx.reply(msg, {
+        parse_mode: 'HTML',
+        ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
+      });
+    } catch (err) {
+      return ctx.reply(`❌ Failed to send invite link: ${err.message}`);
+    }
+  });
+
   bot.action(/^admin_role_revoke_(\d+)$/, requireAdmin, async (ctx) => {
     await ctx.answerCbQuery();
     const targetId = ctx.match[1];
     try {
       revokeRole(targetId, ctx.from.id);
-      await notifyUserRoleChanged(ctx.telegram, targetId, 'member');
+      await notifyTreasurerRevoked(ctx.telegram, targetId);
 
       await ctx.reply(
         `✅ Successfully revoked Treasurer role from Telegram ID <code>${escapeHtml(targetId)}</code>.\n\n` +

@@ -7,6 +7,8 @@ const {
   getStaffGroupId,
   getStaffGroupDetails,
   setStaffGroupId,
+  getStaffGroupInviteLink,
+  setStaffGroupInviteLink,
   getOrCreateTopic,
   initializeAcademicYearTopics,
   getMonthTopicKey,
@@ -17,6 +19,8 @@ const {
   postMonthlyReportToStaffGroup,
   inviteTreasurerToStaffGroup,
   removeTreasurerFromStaffGroup,
+  notifyTreasurerAppointed,
+  notifyTreasurerRevoked,
 } = require('../src/services/staffArchive');
 
 test('Staff Archive Group & Forum Topic (Folder) Management Tests', async (t) => {
@@ -248,6 +252,67 @@ test('Staff Archive Group & Forum Topic (Folder) Management Tests', async (t) =>
     assert.strictEqual(announcementSent.chatId, '-100987654321');
     assert.ok(announcementSent.text.includes('Staff Role Update'));
     assert.ok(announcementSent.text.includes('Abebe Kebede'));
+  });
+
+  await t.test('10. getStaffGroupInviteLink and setStaffGroupInviteLink persist fallback link in settings', () => {
+    assert.strictEqual(getStaffGroupInviteLink(), null);
+    setStaffGroupInviteLink('https://t.me/+PermanentStaffLink123', '6764556245');
+    assert.strictEqual(getStaffGroupInviteLink(), 'https://t.me/+PermanentStaffLink123');
+  });
+
+  await t.test('11. notifyTreasurerAppointed sends role notice with inline link button, copyable text, and staff menu', async () => {
+    const sentMessages = [];
+    const mockTelegram = {
+      async createChatInviteLink(chatId, options) {
+        return { invite_link: 'https://t.me/+ExclusiveTreasurerLink' };
+      },
+      async sendMessage(chatId, text, extra) {
+        sentMessages.push({ chatId, text, extra });
+      },
+    };
+
+    const res = await notifyTreasurerAppointed(mockTelegram, '99887766', 'Administrator');
+    assert.strictEqual(res.dmSent, true);
+    assert.strictEqual(res.inviteLink, 'https://t.me/+ExclusiveTreasurerLink');
+
+    // Message 1: Group welcome announcement in staff group
+    // Message 2: Private DM 1 (Role notice with invite link in text AND inline button)
+    // Message 3: Private DM 2 (Staff menu keyboard activation)
+    const dm1 = sentMessages.find(m => m.chatId === '99887766' && m.text.includes('Role Updated'));
+    assert.ok(dm1, 'DM 1 (role update) must be sent');
+    assert.ok(dm1.text.includes('https://t.me/+ExclusiveTreasurerLink'), 'DM 1 text must contain copyable link');
+    assert.ok(dm1.extra?.reply_markup?.inline_keyboard, 'DM 1 must contain inline keyboard with button');
+    assert.strictEqual(dm1.extra.reply_markup.inline_keyboard[0][0].url, 'https://t.me/+ExclusiveTreasurerLink');
+
+    const dm2 = sentMessages.find(m => m.chatId === '99887766' && m.text.includes('Staff Menu Activated'));
+    assert.ok(dm2, 'DM 2 (staff menu) must be sent');
+    assert.ok(dm2.extra?.reply_markup?.keyboard, 'DM 2 must contain persistent menu keyboard');
+  });
+
+  await t.test('12. notifyTreasurerRevoked removes from staff group and resets menu keyboard', async () => {
+    const sentMessages = [];
+    let banned = null;
+    let unbanned = null;
+
+    const mockTelegram = {
+      async banChatMember(chatId, userId) {
+        banned = { chatId, userId };
+      },
+      async unbanChatMember(chatId, userId) {
+        unbanned = { chatId, userId };
+      },
+      async sendMessage(chatId, text, extra) {
+        sentMessages.push({ chatId, text, extra });
+      },
+    };
+
+    const res = await notifyTreasurerRevoked(mockTelegram, '99887766');
+    assert.strictEqual(res.dmSent, true);
+    assert.strictEqual(res.removalResult.removed, true);
+
+    const dm = sentMessages.find(m => m.chatId === '99887766');
+    assert.ok(dm);
+    assert.ok(dm.text.includes('Staff Role Update'));
   });
 
   cleanup();

@@ -36,7 +36,7 @@ const {
 const { getPaymentMethodKeyboard, getCancelKeyboard, getCancelReplyKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
 const { showPaymentConfirmation } = require('./payments');
 const { assignRole } = require('../services/permissions');
-const { inviteTreasurerToStaffGroup, getStaffGroupId } = require('../services/staffArchive');
+const { notifyTreasurerAppointed, getStaffGroupId } = require('../services/staffArchive');
 const { isTursoConfigured, pushToTurso } = require('../services/tursoService');
 
 const MENU_BUTTON_PATTERNS = [
@@ -746,52 +746,22 @@ function registerWizardHandler(bot) {
       clearSession(userId);
       try {
         assignRole(targetId, 'treasurer', userId);
-        const member = getMemberByTelegramId(targetId) || null;
-        const memberName = member?.full_name || null;
-        const inviteLink = await inviteTreasurerToStaffGroup(ctx.telegram, targetId, memberName);
+        const notifyRes = await notifyTreasurerAppointed(ctx.telegram, targetId, ctx.from.first_name || 'an administrator');
+        const displayName = notifyRes.memberName || targetId;
 
-        const inlineButtons = [];
-        if (inviteLink) {
-          inlineButtons.push([Markup.button.url('🏛️ Join Admin & Staff Group / ግሩፑን ተቀላቀል', inviteLink)]);
-        }
-
-        let dmSent = false;
-        let dmError = null;
-
-        // Push updated keyboard & invite link to the new treasurer
-        try {
-          await ctx.telegram.sendMessage(
-            targetId,
-            `🎉 <b>Role Updated! / አዲስ ኃላፊነት ተሰጥቶዎታል!</b>\n\n` +
-            `You have been granted <b>Treasurer (ገንዘብ ያዥ)</b> privileges for Natanim Church Fund by an administrator.\n\n` +
-            `• <b>Staff Tools:</b> Your menu buttons below have been automatically upgraded with full financial tools (Record Payment, Monthly Reports, Members List, Verify Receipts).\n` +
-            (inviteLink ? `• <b>Leadership Group:</b> Tap the button below to join the Admin & Bot Leadership Group to view monthly reports, verify payment receipts, and stay updated!\n` : ''),
-            {
-              parse_mode: 'HTML',
-              ...(inlineButtons.length > 0 ? Markup.inlineKeyboard(inlineButtons) : {}),
-              ...getMainMenuKeyboard('treasurer'),
-            }
-          );
-          dmSent = true;
-        } catch (dmErr) {
-          dmError = dmErr.message;
-          console.warn(`[Roles] Could not push keyboard to user ${targetId}:`, dmErr.message);
-        }
-
-        const displayName = memberName || targetId;
         let adminMsg = `✅ Successfully granted <b>Treasurer</b> role to <b>${escapeHtml(displayName)}</b> (<code>${escapeHtml(targetId)}</code>).\n\n`;
         adminMsg += `• Menu buttons automatically updated on their device\n`;
 
         const adminButtons = [];
-        if (inviteLink) {
-          adminMsg += `\n🔗 <b>Leadership Group Invite Link:</b>\n<code>${inviteLink}</code>\n\n`;
-          if (dmSent) {
-            adminMsg += `• ✅ Link was sent directly to their private chat.\n`;
+        if (notifyRes.inviteLink) {
+          adminMsg += `\n🔗 <b>Leadership Group Invite Link:</b>\n<code>${notifyRes.inviteLink}</code>\n\n`;
+          if (notifyRes.dmSent) {
+            adminMsg += `• ✅ Link and staff menu was sent directly to their private chat.\n`;
           } else {
             adminMsg += `• ⚠️ <b>Could not DM user:</b> They have not started the bot privately yet (or blocked it).\n👉 <b>Please copy and share the link above directly with them!</b>\n`;
           }
           adminMsg += `• Welcome announcement posted in leadership group.`;
-          adminButtons.push([Markup.button.url('🏛️ Open Group Invite Link', inviteLink)]);
+          adminButtons.push([Markup.button.url('🏛️ Open Group Invite Link', notifyRes.inviteLink)]);
         } else {
           const staffGroupId = getStaffGroupId();
           if (!staffGroupId) {
