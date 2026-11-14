@@ -743,20 +743,6 @@ function registerAdminHandlers(bot) {
       { parse_mode: 'HTML' }
     );
   });
-          `🏛️ <b>Leadership Group Invite Link:</b>\n\n` +
-          `<code>${inviteLink}</code>\n\n` +
-          `<i>You can share this link with any approved church staff or treasurer to join the leadership group.</i>`,
-          {
-            parse_mode: 'HTML',
-            ...Markup.inlineKeyboard([[Markup.button.url('🏛️ Join Leadership Group', inviteLink)]]),
-          }
-        );
-      }
-      return ctx.reply('⚠️ Could not generate invite link. Ensure the bot is an Administrator in the group with "Invite Users via Link" enabled.');
-    } catch (err) {
-      return ctx.reply(`❌ Failed to generate invite link: ${err.message}`);
-    }
-  });
 
   bot.hears(/^(?:🛡️\s*)?(?:Manage Roles|ሚናዎች)$/i, requireAdmin, async (ctx) => {
     const { text: msg, keyboard } = getRolesView();
