@@ -72,7 +72,7 @@ test('Internationalization (i18n) & Bilingual Language Selection Tests', async (
     assert.ok(flatAm.includes('📜 ታሪኬ'));
     assert.ok(flatAm.includes('👤 መገለጫዬ'));
     assert.ok(flatAm.includes('📤 ደረሰኝ ላክ'));
-    assert.ok(flatAm.includes('🌐 ቋንቋ / Language'));
+    assert.ok(flatAm.includes('🌐 ቋንቋ'));
 
     const adminAmKb = getMainMenuKeyboard('admin', 'am');
     const flatAdminAm = adminAmKb.reply_markup.keyboard.flat();

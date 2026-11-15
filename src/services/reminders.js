@@ -1,13 +1,17 @@
+const { Markup } = require('telegraf');
 const { getDatabase } = require('../db');
 const { config } = require('../config');
 const {
   formatMoney,
   getCurrentYearMonth,
   escapeHtml,
+  formatPeriod,
+  formatDate,
   formatDualMonth,
   formatDualDate,
 } = require('../utils/formatters');
 const { isValidTelegramId } = require('../utils/validators');
+const { getUserLanguage } = require('./i18n');
 const {
   listUnpaidMembersForMonth,
   getCurrency,
@@ -45,16 +49,31 @@ function buildReminderMessage({
   dueDate,
   cbeAccountNum,
   cbeAccountName,
+  lang = 'am',
 }) {
-  let msg = `📌 ሰላም <b>${escapeHtml(fullName)}</b> 🙏\n`;
-  msg += `ይህ የ<b>${formatDualMonth(month)}</b> የናታኒም ፈንድ መዋጮ ማስታወሻ ነው፦\n\n`;
-  msg += `💰 <b>የሚከፈል፡</b> <code>${balanceFormatted}</code> (እስከ ${formatDualDate(dueDate) || 'ወሩ መጨረሻ'})\n`;
-  if (hasOlderDues && totalOutstandingFormatted) {
-    msg += `⚠️ <b>ጠቅላላ ያለብዎት ዕዳ፡</b> <code>${totalOutstandingFormatted}</code>\n`;
+  const isAm = lang === 'am';
+  if (isAm) {
+    let msg = `📌 ሰላም <b>${escapeHtml(fullName)}</b> 🙏\n\n`;
+    msg += `የ<b>${formatPeriod(month, 'am')}</b> የናታኒም ፈንድ መዋጮ ማስታወሻ፦\n\n`;
+    msg += `💰 <b>የሚከፈል፦</b> <code>${balanceFormatted}</code> (እስከ ${formatDate(dueDate, 'am') || 'ወሩ መጨረሻ'})\n`;
+    if (hasOlderDues && totalOutstandingFormatted) {
+      msg += `⚠️ <b>ጠቅላላ ያለብዎት ዕዳ፦</b> <code>${totalOutstandingFormatted}</code>\n`;
+    }
+    msg += `🏦 <b>CBE ሂሳብ፦</b> <code>${cbeAccountNum}</code> (${escapeHtml(cbeAccountName)})\n`;
+    msg += `💡 <i>(ቁጥሩን ነክተው ኮፒ ማድረግ ይችላሉ)</i>\n\n`;
+    msg += `እባክዎ ክፍያውን እንደፈጸሙ ከታች ያለውን <b>«ደረሰኝ ላክ»</b> ቁልፍ በመጫን ደረሰኝዎን ይላኩ። እግዚአብሔር ይባርክዎ! 🙏`;
+    return msg;
   }
-  msg += `🏦 <b>CBE፡</b> <code>${cbeAccountNum}</code> — ${escapeHtml(cbeAccountName)}\n`;
-  msg += `💡 <i>(የሂሳብ ቁጥሩን ነክተው በቀላሉ ኮፒ ማድረግ ይችላሉ)</i>\n\n`;
-  msg += `📤 <i>ክፍያውን እንደፈጸሙ ከታች <b>«ደረሰኝ ላክ»</b> የሚለውን ይጫኑ። እግዚአብሔር ይስጥልን! 🙏</i>`;
+
+  let msg = `📌 Greetings <b>${escapeHtml(fullName)}</b> 🙏\n\n`;
+  msg += `This is a reminder for your <b>${formatPeriod(month, 'en')}</b> Natanim Fund contribution:\n\n`;
+  msg += `💰 <b>Amount Due:</b> <code>${balanceFormatted}</code> (Due: ${formatDate(dueDate, 'en') || 'End of month'})\n`;
+  if (hasOlderDues && totalOutstandingFormatted) {
+    msg += `⚠️ <b>Total Outstanding Balance:</b> <code>${totalOutstandingFormatted}</code>\n`;
+  }
+  msg += `🏦 <b>CBE Account:</b> <code>${cbeAccountNum}</code> (${escapeHtml(cbeAccountName)})\n`;
+  msg += `💡 <i>(Tap the number to copy it)</i>\n\n`;
+  msg += `Please submit your receipt using the <b>«Submit Receipt»</b> button below once transferred. God bless you! 🙏`;
   return msg;
 }
 
@@ -177,6 +196,9 @@ async function sendMonthlyReminders({
     const hasOlderDues = totalOutstandingCents > m.balance_cents;
     const totalOutstandingFormatted = hasOlderDues ? formatMoney(totalOutstandingCents, currency) : null;
 
+    const memberLang = getUserLanguage(m.telegram_id) || 'am';
+    const isAm = memberLang === 'am';
+
     const message = buildReminderMessage({
       fullName: m.full_name,
       month,
@@ -186,10 +208,18 @@ async function sendMonthlyReminders({
       dueDate: m.due_date,
       cbeAccountNum,
       cbeAccountName,
+      lang: memberLang,
     });
 
+    const reminderKeyboard = Markup.inlineKeyboard([
+      [Markup.button.callback(isAm ? '📤 ደረሰኝ ላክ' : '📤 Submit Receipt', 'start_payment_submission')],
+    ]);
+
     try {
-      await tg.sendMessage(m.telegram_id, message, { parse_mode: 'HTML' });
+      await tg.sendMessage(m.telegram_id, message, {
+        parse_mode: 'HTML',
+        ...reminderKeyboard,
+      });
       logStmt.run(m.member_id, m.telegram_id, month, 'SENT', null, String(sentBy));
       results.sentCount++;
       results.details.push({

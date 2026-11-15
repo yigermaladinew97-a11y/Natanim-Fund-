@@ -12,6 +12,7 @@ const {
 const { config } = require('../config');
 const { getMonthlyReportSummary, exportMonthlyReportCsv, formatMonthlyReportHtml } = require('./reporting');
 const { getMemberByTelegramId } = require('./memberService');
+const { getUserLanguage } = require('./i18n');
 const { getMainMenuKeyboard } = require('../utils/keyboards');
 
 /**
@@ -402,20 +403,33 @@ async function notifyTreasurerAppointed(telegram, targetId, assignedByName = 'an
   let dmError = null;
 
   try {
-    // Message 1: Role appointment notice with direct copyable invite link & inline button
-    const inviteMsg =
-      `🎉 <b>Role Updated! / አዲስ ኃላፊነት ተሰጥቶዎታል!</b>\n\n` +
-      `You have been appointed as <b>Treasurer (ገንዘብ ያዥ)</b> for Natanim Church Fund by ${escapeHtml(assignedByName)}.\n\n` +
-      `• <b>ኃላፊነት / Staff Privileges:</b> As a Treasurer, you have access to view monthly financial reports, verify member payment receipts, and record contributions.\n\n` +
-      (inviteLink
-        ? `🏛️ <b>የአመራር ግሩፕ መጋበዣ ሊንክ / Leadership Group Invite:</b>\n` +
-          `ወርሃዊ ሪፖርቶችን እና የክፍያ ደረሰኞችን ለመከታተል እባክዎ ከታች ያለውን ሊንክ ወይም ቁልፍ በመጫን የአመራር ግሩፑን ይቀላቀሉ፦\n\n` +
-          `👉 <code>${inviteLink}</code>\n\n`
-        : '') +
-      `<i>እግዚአብሔር በአገልግሎትዎ ይባርክዎ! 🙏</i>`;
+    const targetLang = getUserLanguage ? (getUserLanguage(targetId) || 'am') : 'am';
+    const isAm = targetLang === 'am';
 
-    const inlineKeyboard = inviteLink
-      ? Markup.inlineKeyboard([[Markup.button.url('🏛️ Join Admin & Staff Group / ግሩፑን ተቀላቀል', inviteLink)]])
+    // Message 1: Role appointment notice with direct copyable invite link & inline button
+    const inviteMsg = isAm
+      ? `🎉 <b>አዲስ ኃላፊነት ተሰጥቶዎታል! / Role Updated</b>\n\n` +
+        `ለናታኒም ፈንድ በ<b>ገንዘብ ያዥነት (Treasurer)</b> ተመድበዋል!\n\n` +
+        `• <b>ኃላፊነት፦</b> ወርሃዊ ሪፖርቶችን መመልከት፣ የአባላትን የክፍያ ደረሰኝ ማረጋገጥ እና ክፍያዎችን መመዝገብ ይችላሉ።\n\n` +
+        (inviteLink
+          ? `🏛️ <b>የአመራር ግሩፕ መጋበዣ ሊንክ፦</b>\n` +
+            `ወርሃዊ ሪፖርቶችን እና ደረሰኞችን ለመከታተል እባክዎ ከታች ያለውን ሊንክ በመጫን የአመራር ግሩፑን ይቀላቀሉ፦\n\n` +
+            `👉 <code>${inviteLink}</code>\n\n`
+          : '') +
+        `<i>እግዚአብሔር በአገልግሎትዎ ይባርክዎ! 🙏</i>`
+      : `🎉 <b>Role Updated!</b>\n\n` +
+        `You have been appointed as <b>Treasurer</b> for Natanim Church Fund!\n\n` +
+        `• <b>Privileges:</b> You have access to view monthly financial reports, verify payment receipts, and record contributions.\n\n` +
+        (inviteLink
+          ? `🏛️ <b>Leadership Group Invite Link:</b>\n` +
+            `Please join the leadership group to view monthly reports and receipts:\n\n` +
+            `👉 <code>${inviteLink}</code>\n\n`
+          : '') +
+        `<i>May God bless your service! 🙏</i>`;
+
+    const isValidUrl = inviteLink && /^https?:\/\//i.test(inviteLink);
+    const inlineKeyboard = isValidUrl
+      ? Markup.inlineKeyboard([[Markup.button.url(isAm ? '🏛️ ግሩፑን ተቀላቀል' : '🏛️ Join Leadership Group', inviteLink)]])
       : undefined;
 
     await telegram.sendMessage(targetId, inviteMsg, {
@@ -425,13 +439,16 @@ async function notifyTreasurerAppointed(telegram, targetId, assignedByName = 'an
 
     // Message 2: Push persistent staff menu buttons (Reply Keyboard)
     // Note: Sent separately because Telegram does not allow inline_keyboard and reply_keyboard in one message.
+    const menuMsg = isAm
+      ? `💼 <b>የአስተዳዳሪ ሜኑ ተዘጋጅቷል / Staff Menu Activated</b>\n\nየገንዘብ ያዥ ሜኑ ቁልፎችዎ ከታች ባለው ሰሌዳ ላይ ተዘጋጅተዋል (ክፍያ መዝግብ፣ ወርሃዊ ሪፖርት፣ ደረሰኝ አረጋግጥ ወዘተ)።`
+      : `💼 <b>Staff Menu Activated</b>\n\nYour treasurer menu buttons are now available on the keyboard below.`;
+
     await telegram.sendMessage(
       targetId,
-      `💼 <b>Staff Menu Activated / የአስተዳዳሪ ሜኑ ተዘጋጅቷል</b>\n\n` +
-      `የገንዘብ ያዥ ሜኑ ቁልፎችዎ ከታች ባለው ሰሌዳ ላይ ተዘጋጅተዋል (ክፍያ መዝግብ፣ ወርሃዊ ሪፖርት፣ ደረሰኝ አረጋግጥ ወዘተ)።`,
+      menuMsg,
       {
         parse_mode: 'HTML',
-        ...getMainMenuKeyboard('treasurer', 'am'),
+        ...getMainMenuKeyboard('treasurer', isAm ? 'am' : 'en'),
       }
     );
 

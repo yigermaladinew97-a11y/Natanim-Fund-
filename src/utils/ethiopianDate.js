@@ -129,6 +129,53 @@ function toGregorianDate(year, month, day) {
   };
 }
 
+const GREGORIAN_MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+/**
+ * Format a YYYY-MM period into clean representation for the chosen language
+ * am: "ጥቅምት 2019 ዓ.ም."
+ * en: "October 2026"
+ */
+function formatPeriod(yearMonth, lang = 'am') {
+  if (!yearMonth || typeof yearMonth !== 'string') return yearMonth || '';
+  const parts = yearMonth.split('-');
+  if (parts.length < 2) return yearMonth;
+
+  const gregY = parseInt(parts[0], 10);
+  const gregM = parseInt(parts[1], 10);
+
+  if (lang === 'en') {
+    const monthName = GREGORIAN_MONTH_NAMES[gregM - 1] || yearMonth;
+    return `${monthName} ${gregY}`;
+  }
+
+  const eth = toEthiopianDate(`${gregY}-${String(gregM).padStart(2, '0')}-15`);
+  return `${eth.monthNameAm} ${eth.year} ዓ.ም.`;
+}
+
+/**
+ * Format a YYYY-MM-DD date into clean representation for the chosen language
+ * am: "ጥቅምት 14, 2019 ዓ.ም."
+ * en: "October 24, 2026"
+ */
+function formatDate(dateStr, lang = 'am') {
+  if (!dateStr || typeof dateStr !== 'string') return dateStr || '';
+  const clean = dateStr.trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return dateStr;
+
+  if (lang === 'en') {
+    const [y, m, d] = clean.split('-').map(Number);
+    const monthName = GREGORIAN_MONTH_NAMES[m - 1] || '';
+    return `${monthName} ${d}, ${y}`;
+  }
+
+  const eth = toEthiopianDate(clean);
+  return `${eth.monthNameAm} ${eth.day}, ${eth.year} ዓ.ም.`;
+}
+
 /**
  * Format a YYYY-MM period into dual Ethiopian & Gregorian representation
  * e.g. "2026-10" -> "ጥቅምት 2019 ዓ.ም. (2026-10)"
@@ -244,5 +291,7 @@ module.exports = {
   toGregorianDate,
   formatDualMonth,
   formatDualDate,
+  formatPeriod,
+  formatDate,
   getEthiopianToday,
 };

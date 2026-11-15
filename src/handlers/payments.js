@@ -18,9 +18,12 @@ const {
   formatPaymentMethod,
   formatStatus,
   escapeHtml,
+  formatPeriod,
+  formatDate,
   formatDualMonth,
   formatDualDate,
 } = require('../utils/formatters');
+const { getUserLanguage } = require('../services/i18n');
 const { getPaymentMethodKeyboard, getCancelKeyboard, getConfirmationKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
 const { forwardVerifiedReceiptToStaffGroup } = require('../services/staffArchive');
 const { isTursoConfigured, pushToTurso } = require('../services/tursoService');
@@ -254,30 +257,46 @@ function registerPaymentHandlers(bot) {
 
       // Send official digital receipt message to member
       try {
-        const coveredList = monthsCovered.map(formatDualMonth).join(', ');
+        const memberLang = getUserLanguage(submission.telegram_id) || 'am';
+        const isAm = memberLang === 'am';
 
-        const receiptMsg =
-          `🕊️ <b>የአርባ ምንጭ ዩኒቨርሲቲ ክርስቲያን ተማሪዎች ናታኒም ፈንድ</b>\n` +
-          `<i>Arbaminch University Christian Students Natanim Fund</i>\n` +
-          `───────────────────────\n` +
-          `🎉 <b>ይፋዊ የክፍያ ማረጋገጫ ደረሰኝ / Official Receipt</b>\n\n` +
-          `ሰላም <b>${escapeHtml(submission.full_name)}</b>! ያቀረቡት መዋጮ በአስተዳደሩ ተረጋግጦ ይፋዊ ደረሰኝ ተመዝግቧል።\n\n` +
-          `🧾 <b>የደረሰኝ ዝርዝር (Receipt Details):</b>\n` +
-          `• <b>ደረሰኝ ቁጥር (TxID):</b> <code>${escapeHtml(finalTxId)}</code>\n` +
-          `• <b>የተከፈለው መጠን:</b> <b>${escapeHtml(formatMoney(submission.amount_cents, currency))}</b>\n` +
-          `• <b>የክፍያ ዘዴ:</b> ${escapeHtml(formatPaymentMethod(submission.payment_method))}\n` +
-          (submission.reference_number ? `• <b>ማመሳከሪያ (Ref):</b> <code>${escapeHtml(submission.reference_number)}</code>\n` : '') +
-          `• <b>የተሸፈኑ ወራት (${monthsCovered.length}):</b> <code>${escapeHtml(coveredList)}</code>\n` +
-          `• <b>ሁኔታ:</b> 🟢 ሙሉ በሙሉ ተከፍሏል (Fully Settled)\n\n` +
-          `«እግዚአብሔር በደስታ የሚሰጠውን ይወዳልና እያንዳንዱ በልቡ እንዳሰበ ይስጥ።» (2ኛ ቆሮንቶስ 9:7)\n` +
-          `እግዚአብሔር አብዝቶ ይባርክዎት! 🕊️`;
+        let receiptMsg = '';
+        if (isAm) {
+          const coveredList = monthsCovered.map((m) => formatPeriod(m, 'am')).join('፣ ');
+          receiptMsg =
+            `🕊️ <b>የናታኒም ፈንድ ይፋዊ ደረሰኝ</b>\n\n` +
+            `ሰላም <b>${escapeHtml(submission.full_name)}</b>! ያቀረቡት መዋጮ በአስተዳደሩ ተረጋግጦ ይፋዊ ደረሰኝ ተመዝግቧል።\n\n` +
+            `🧾 <b>የደረሰኝ ዝርዝር፦</b>\n` +
+            `• <b>ደረሰኝ ቁጥር፦</b> <code>${escapeHtml(finalTxId)}</code>\n` +
+            `• <b>የተከፈለው መጠን፦</b> <b>${escapeHtml(formatMoney(submission.amount_cents, currency))}</b>\n` +
+            `• <b>የክፍያ መንገድ፦</b> ${escapeHtml(formatPaymentMethod(submission.payment_method, 'am'))}\n` +
+            (submission.reference_number ? `• <b>ማመሳከሪያ፦</b> <code>${escapeHtml(submission.reference_number)}</code>\n` : '') +
+            `• <b>የተሸፈነው ጊዜ፦</b> <b>${escapeHtml(coveredList)}</b>\n` +
+            `• <b>ሁኔታ፦</b> 🟢 ሙሉ በሙሉ ተከፍሏል\n\n` +
+            `«እግዚአብሔር በደስታ የሚሰጠውን ይወዳል» (2ኛ ቆሮ. 9:7)\n` +
+            `እግዚአብሔር አብዝቶ ይባርክዎ! 🙏`;
+        } else {
+          const coveredList = monthsCovered.map((m) => formatPeriod(m, 'en')).join(', ');
+          receiptMsg =
+            `🕊️ <b>Natanim Fund — Official Receipt</b>\n\n` +
+            `Greetings <b>${escapeHtml(submission.full_name)}</b>! Your contribution payment has been verified and officially recorded.\n\n` +
+            `🧾 <b>Receipt Details:</b>\n` +
+            `• <b>Receipt ID:</b> <code>${escapeHtml(finalTxId)}</code>\n` +
+            `• <b>Amount Paid:</b> <b>${escapeHtml(formatMoney(submission.amount_cents, currency))}</b>\n` +
+            `• <b>Payment Method:</b> ${escapeHtml(formatPaymentMethod(submission.payment_method, 'en'))}\n` +
+            (submission.reference_number ? `• <b>Reference:</b> <code>${escapeHtml(submission.reference_number)}</code>\n` : '') +
+            `• <b>Covered Months:</b> <b>${escapeHtml(coveredList)}</b>\n` +
+            `• <b>Status:</b> 🟢 Fully Settled\n\n` +
+            `“God loves a cheerful giver.” (2 Corinthians 9:7)\n` +
+            `May God bless you abundantly! 🙏`;
+        }
 
         await ctx.telegram.sendMessage(
           submission.telegram_id,
           receiptMsg,
           {
             parse_mode: 'HTML',
-            ...getMainMenuKeyboard('member'),
+            ...getMainMenuKeyboard('member', isAm ? 'am' : 'en'),
           }
         );
       } catch (notifyErr) {
@@ -331,12 +350,24 @@ function registerPaymentHandlers(bot) {
 
       // Notify the member
       try {
+        const memberLang = getUserLanguage(submission.telegram_id) || 'am';
+        const isAm = memberLang === 'am';
+
+        const rejectMsg = isAm
+          ? `⚠️ <b>የክፍያ ማረጋገጫ ማስታወሻ</b>\n\n` +
+            `ሰላም <b>${escapeHtml(submission.full_name)}</b>፣ ያስገቡት የ<b>${formatPeriod(submission.year_month, 'am')}</b> የ${formatMoney(submission.amount_cents, currency)} መዋጮ ደረሰኝ ማረጋገጥ አልተቻለም።\n\n` +
+            `እባክዎ ትክክለኛውን የባንክ ደረሰኝ ስክሪንሾት እንደገና በ «ደረሰኝ ላክ» ይላኩ ወይም ገንዘብ ያዦችን ያነጋግሩ።`
+          : `⚠️ <b>Payment Verification Notice</b>\n\n` +
+            `Hello <b>${escapeHtml(submission.full_name)}</b>, your payment submission of <b>${escapeHtml(formatMoney(submission.amount_cents, currency))}</b> for <b>${formatPeriod(submission.year_month, 'en')}</b> could not be verified.\n\n` +
+            `Please re-submit a clear screenshot of your bank transfer or contact the church treasurer.`;
+
         await ctx.telegram.sendMessage(
           submission.telegram_id,
-          `⚠️ <b>Payment Verification Notice</b>\n\n` +
-          `Hello <b>${escapeHtml(submission.full_name)}</b>, your payment submission of <b>${escapeHtml(formatMoney(submission.amount_cents, currency))}</b> for <code>${escapeHtml(submission.year_month)}</code> could not be verified.\n\n` +
-          `Please check that the transfer was sent to the church account and that the screenshot is clear. You can re-submit via /submitpayment or contact the church treasurer.`,
-          { parse_mode: 'HTML' }
+          rejectMsg,
+          {
+            parse_mode: 'HTML',
+            ...getMainMenuKeyboard('member', isAm ? 'am' : 'en'),
+          }
         );
       } catch (_) {}
 

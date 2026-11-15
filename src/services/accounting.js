@@ -78,12 +78,26 @@ function setCbeAccountDetails({ accountNumber, accountName, actorTelegramId }) {
   };
 }
 
-function getBankInfo() {
+function getBankInfo(lang = 'en') {
+  const isAm = lang === 'am';
   const custom = getSetting('bank_info', null);
   if (custom) return custom;
 
   const accNum = getCbeAccountNumber();
   const accName = getCbeAccountName();
+
+  if (isAm) {
+    return (
+      `🏦 <b>የናታኒም ፈንድ የባንክ ሂሳብ (CBE)</b>\n\n` +
+      `• <b>ባንክ፦</b> የኢትዮጵያ ንግድ ባንክ (CBE)\n` +
+      `• <b>የሂሳብ ቁጥር፦</b> <code>${accNum}</code>\n` +
+      `• <b>የሂሳብ ስም፦</b> ${accName}\n\n` +
+      `💡 <i>የሂሳብ ቁጥሩን ነክተው በቀላሉ ኮፒ ማድረግ ይችላሉ።</i>\n\n` +
+      `📌 <b>ቀላል መመሪያ፦</b>\n` +
+      `1. በCBE ሞባይል ባንኪንግ ወይም ሲቢኢ ብር ይላኩ።\n` +
+      `2. የከፈሉበትን ደረሰኝ (ስክሪንሾት) እዚህ ይላኩ።`
+    );
+  }
 
   return (
     `🏦 <b>Arbaminch University Christian Students Natanim Fund — CBE Account</b>\n\n` +
@@ -92,10 +106,8 @@ function getBankInfo() {
     `• <b>Account Name:</b> ${accName}\n\n` +
     `💡 <i>Tip: Tap the account number above to copy it instantly.</i>\n\n` +
     `📌 <b>Instructions:</b>\n` +
-    `1. Transfer your contribution via CBE Mobile Banking, CBE Birr, or branch deposit.\n` +
-    `2. Put your <b>Name</b> or <b>Member ID</b> in the transfer reason/remark.\n` +
-    `3. Take a screenshot of the confirmation SMS or receipt.\n` +
-    `4. Upload the screenshot below for verification.`
+    `1. Transfer via CBE Mobile Banking, CBE Birr, or branch deposit.\n` +
+    `2. Upload a screenshot of your payment receipt below.`
   );
 }
 

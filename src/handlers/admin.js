@@ -19,6 +19,7 @@ const {
   getPaymentByTxId,
 } = require('../services/accounting');
 const { assignRole, revokeRole, listRoles, getMemberByTelegramId, isAdmin } = require('../services/permissions');
+const { getUserLanguage } = require('../services/i18n');
 const { getDatabase } = require('../db');
 const { setSession, getSession, clearSession } = require('../utils/session');
 const { parseMoneyToCents, formatMoney, escapeHtml, getCurrentYearMonth, formatDualMonth } = require('../utils/formatters');
@@ -113,14 +114,23 @@ function registerAdminHandlers(bot) {
 
       // Notify the member
       try {
+        const memberLang = getUserLanguage(request.telegram_id) || 'am';
+        const isAm = memberLang === 'am';
+
+        const welcomeMsg = isAm
+          ? `🎉 <b>እንኳን ደስ አለዎት ${escapeHtml(member.full_name)}!</b>\n\n` +
+            `የ<b>ናታኒም ፈንድ</b> የአባልነት ምዝገባ ጥያቄዎ በአስተዳዳሪዎች <b>ፀድቋል</b>!\n\n` +
+            `አሁን ንቁ የፈንዱ አባል ሆነዋል። ከታች ያለውን ሜኑ በመጠቀም የወርሃዊ መዋጮ ሁኔታዎን እና መገለጫዎን በማንኛውም ጊዜ ማየት ይችላሉ።`
+          : `🎉 <b>Congratulations, ${escapeHtml(member.full_name)}!</b>\n\n` +
+            `Your registration request for <b>Natanim Church Fund</b> has been <b>approved</b> by church administrators!\n\n` +
+            `You are now an active contributing member. Use the menu below to view your monthly contribution status and profile anytime.`;
+
         await ctx.telegram.sendMessage(
           request.telegram_id,
-          `🎉 <b>Congratulations, ${escapeHtml(member.full_name)}!</b>\n\n` +
-          `Your registration request for <b>Natanim Church Fund</b> has been <b>approved</b> by church administrators!\n\n` +
-          `You are now an active contributing member. Use the menu below to view your monthly contribution status and profile anytime.`,
+          welcomeMsg,
           {
             parse_mode: 'HTML',
-            ...getMainMenuKeyboard('member'),
+            ...getMainMenuKeyboard('member', isAm ? 'am' : 'en'),
           }
         );
       } catch (notifyErr) {
@@ -153,14 +163,23 @@ function registerAdminHandlers(bot) {
 
       // Notify the applicant
       try {
+        const memberLang = getUserLanguage(request.telegram_id) || 'am';
+        const isAm = memberLang === 'am';
+
+        const rejectMsg = isAm
+          ? `ℹ️ <b>የአባልነት ምዝገባ ማስታወሻ</b>\n\n` +
+            `የ<b>ናታኒም ፈንድ</b> የአባልነት ጥያቄዎ ለጊዜው አልፀደቀም።\n\n` +
+            `መረጃዎትን አስተካክለው እንደገና ማመልከት ይችላሉ።`
+          : `ℹ️ <b>Registration Update</b>\n\n` +
+            `Your membership request for <b>Natanim Church Fund</b> was not approved at this time.\n\n` +
+            `You may review your details and submit a new registration request when ready.`;
+
         await ctx.telegram.sendMessage(
           request.telegram_id,
-          `ℹ️ <b>Registration Update</b>\n\n` +
-          `Your membership request for <b>Natanim Church Fund</b> was not approved at this time.\n\n` +
-          `You may review your details and submit a new registration request when ready.`,
+          rejectMsg,
           {
             parse_mode: 'HTML',
-            ...getMainMenuKeyboard('unregistered'),
+            ...getMainMenuKeyboard('unregistered', isAm ? 'am' : 'en'),
           }
         );
       } catch (_) {}
@@ -656,31 +675,36 @@ function registerAdminHandlers(bot) {
   });
 
   bot.command(['stafflink', 'stafflinks', 'grouplink', 'grouplinks'], requireAdmin, async (ctx) => {
-    const groupId = getStaffGroupId();
-    if (!groupId) {
-      return ctx.reply(
-        '⚠️ <b>Staff Group Not Connected</b>\n\n' +
-        'Please add the bot to your leadership group as an Administrator and send <code>/setstaffgroup</code> inside that group first.',
-        { parse_mode: 'HTML' }
-      );
-    }
-
     try {
+      const groupId = getStaffGroupId();
+      if (!groupId) {
+        return ctx.reply(
+          '⚠️ <b>Staff Group Not Connected</b>\n\n' +
+          'Please add the bot to your leadership group as an Administrator and send <code>/setstaffgroup</code> inside that group first.',
+          { parse_mode: 'HTML' }
+        );
+      }
+
       const inviteLink = await inviteTreasurerToStaffGroup(ctx.telegram, ctx.from.id, 'Admin Request');
       if (inviteLink) {
+        const isValidUrl = /^https?:\/\//i.test(inviteLink);
         return ctx.reply(
           `🏛️ <b>Leadership Group Invite Link:</b>\n\n` +
-          `<code>${inviteLink}</code>\n\n` +
+          `<code>${escapeHtml(inviteLink)}</code>\n\n` +
           `<i>You can share this link with any approved church staff or treasurer to join the leadership group.</i>`,
           {
             parse_mode: 'HTML',
-            ...Markup.inlineKeyboard([[Markup.button.url('🏛️ Join Leadership Group', inviteLink)]]),
+            ...(isValidUrl ? Markup.inlineKeyboard([[Markup.button.url('🏛️ Join Leadership Group', inviteLink)]]) : {}),
           }
         );
       }
-      return ctx.reply('⚠️ Could not generate invite link. Ensure the bot is an Administrator in the group with "Invite Users via Link" enabled.');
+      return ctx.reply(
+        '⚠️ Could not generate invite link. Ensure the bot is an Administrator in the group with "Invite Users via Link" enabled.\n\n' +
+        'Or set a fallback link using:\n<code>/setstafflink https://t.me/+YourLinkHere</code>',
+        { parse_mode: 'HTML' }
+      );
     } catch (err) {
-      return ctx.reply(`❌ Failed to generate invite link: ${err.message}`);
+      return ctx.reply(`❌ Failed to generate invite link: ${escapeHtml(err.message)}`);
     }
   });
 

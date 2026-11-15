@@ -67,31 +67,33 @@ function getDueDateForMonth(yearMonth, dueDay = 30) {
   return greg.dateStr;
 }
 
-function formatStatus(status) {
+function formatStatus(status, lang = 'en') {
+  const isAm = lang === 'am';
   switch (status) {
     case 'FULLY_PAID':
-      return '🟢 Fully Paid';
+      return isAm ? '🟢 ሙሉ በሙሉ የተከፈለ' : '🟢 Fully Paid';
     case 'PARTIALLY_PAID':
-      return '🟡 Partially Paid';
+      return isAm ? '🟡 በከፊል የተከፈለ' : '🟡 Partially Paid';
     case 'OVERDUE':
-      return '⏰ Overdue';
+      return isAm ? '⏰ ያለፈበት' : '⏰ Overdue';
     case 'UNPAID':
     default:
-      return '🔴 Unpaid';
+      return isAm ? '🔴 ያልተከፈለ' : '🔴 Unpaid';
   }
 }
 
-function formatPaymentMethod(method) {
+function formatPaymentMethod(method, lang = 'en') {
+  const isAm = lang === 'am';
   switch (method) {
     case 'cash':
-      return '💵 Cash';
+      return isAm ? '💵 በጥሬ ገንዘብ' : '💵 Cash';
     case 'bank_transfer':
-      return '🏦 CBE Transfer';
+      return isAm ? '🏦 የባንክ ሂሳብ (CBE)' : '🏦 CBE Transfer';
     case 'mobile_money':
     case 'cbe_birr':
-      return '📱 CBE Birr';
+      return isAm ? '📱 ሲቢኢ ብር (CBE Birr)' : '📱 CBE Birr';
     default:
-      return method || 'CBE';
+      return method || (isAm ? 'የባንክ ሂሳብ' : 'CBE');
   }
 }
 
@@ -108,6 +110,8 @@ function escapeHtml(str) {
 const {
   formatDualMonth,
   formatDualDate,
+  formatPeriod,
+  formatDate,
   toEthiopianDate,
   toGregorianDate,
   getEthiopianToday,
@@ -131,6 +135,8 @@ module.exports = {
   escapeHtml,
   formatDualMonth,
   formatDualDate,
+  formatPeriod,
+  formatDate,
   toEthiopianDate,
   getEthiopianToday,
 };

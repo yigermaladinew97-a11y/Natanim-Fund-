@@ -67,7 +67,7 @@ function getMainMenuKeyboard(role, lang = 'en', includeLangButton = false) {
   }
 
   if (includeLangButton || isAm) {
-    buttons.push(['🌐 ቋንቋ / Language']);
+    buttons.push([isAm ? '🌐 ቋንቋ' : '🌐 Language']);
   }
 
   return Markup.keyboard(buttons).resize().persistent();
@@ -83,7 +83,7 @@ function getMainMenuInlineKeyboard(role, lang = 'en') {
 
   if (role === 'unregistered') {
     buttons.push([Markup.button.callback(isAm ? '📝 እንደ አባል ይመዝገቡ' : '📝 Register as Member', 'start_self_register')]);
-    buttons.push([Markup.button.callback('🌐 ቋንቋ / Language', 'menu_language')]);
+    buttons.push([Markup.button.callback(isAm ? '🌐 ቋንቋ' : '🌐 Language', 'menu_language')]);
     return Markup.inlineKeyboard(buttons);
   }
 
@@ -128,26 +128,27 @@ function getMainMenuInlineKeyboard(role, lang = 'en') {
     }
   }
 
-  buttons.push([Markup.button.callback('🌐 ቋንቋ / Language', 'menu_language')]);
+  buttons.push([Markup.button.callback(isAm ? '🌐 ቋንቋ' : '🌐 Language', 'menu_language')]);
 
   return Markup.inlineKeyboard(buttons);
 }
 
-function getPaymentMethodKeyboard() {
+function getPaymentMethodKeyboard(lang = 'en') {
+  const isAm = lang === 'am';
   return Markup.inlineKeyboard([
     [
-      Markup.button.callback('🏦 CBE Transfer', 'paymethod_bank_transfer'),
-      Markup.button.callback('📱 CBE Birr', 'paymethod_mobile_money'),
+      Markup.button.callback(isAm ? '🏦 የባንክ ሂሳብ (CBE)' : '🏦 CBE Transfer', 'paymethod_bank_transfer'),
+      Markup.button.callback(isAm ? '📱 ሲቢኢ ብር (CBE Birr)' : '📱 CBE Birr', 'paymethod_mobile_money'),
     ],
     [
-      Markup.button.callback('❌ Cancel', 'action_cancel'),
+      Markup.button.callback(isAm ? '❌ ሰርዝ' : '❌ Cancel', 'action_cancel'),
     ],
   ]);
 }
 
-function getCancelKeyboard() {
+function getCancelKeyboard(lang = 'en') {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('❌ Cancel Operation', 'action_cancel')],
+    [Markup.button.callback(lang === 'am' ? '❌ ሰርዝ' : '❌ Cancel Operation', 'action_cancel')],
   ]);
 }
 
@@ -157,11 +158,12 @@ function getCancelReplyKeyboard(lang = 'en') {
   ]).resize();
 }
 
-function getConfirmationKeyboard(confirmAction, cancelAction = 'action_cancel') {
+function getConfirmationKeyboard(confirmAction, cancelAction = 'action_cancel', lang = 'en') {
+  const isAm = lang === 'am';
   return Markup.inlineKeyboard([
     [
-      Markup.button.callback('✅ Confirm & Submit', confirmAction),
-      Markup.button.callback('❌ Cancel', cancelAction),
+      Markup.button.callback(isAm ? '✅ አረጋግጥ' : '✅ Confirm & Submit', confirmAction),
+      Markup.button.callback(isAm ? '❌ ሰርዝ' : '❌ Cancel', cancelAction),
     ],
   ]);
 }
