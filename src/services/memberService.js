@@ -122,15 +122,42 @@ function deactivateMember({ memberId, reason, actorTelegramId }) {
     WHERE id = ?
   `).run(cleanReason, memberId);
 
+  // If this member was a treasurer or had a leadership role, automatically revoke it
+  let wasTreasurer = false;
+  let roleRevoked = null;
+  if (member.telegram_id) {
+    const roleRow = db.prepare('SELECT role FROM roles WHERE telegram_id = ?').get(String(member.telegram_id));
+    if (roleRow) {
+      wasTreasurer = roleRow.role === 'treasurer';
+      roleRevoked = roleRow.role;
+      db.prepare('DELETE FROM roles WHERE telegram_id = ?').run(String(member.telegram_id));
+      db.prepare(`
+        INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
+        VALUES (?, ?, ?, ?, ?)
+      `).run('REVOKE_ROLE', 'roles', String(member.telegram_id), String(actorTelegramId), JSON.stringify({
+        revoked: true,
+        previousRole: roleRevoked,
+        reason: `Member deactivated: ${cleanReason}`,
+      }));
+    }
+  }
+
   db.prepare(`
     INSERT INTO audit_log (action, entity_type, entity_id, actor_telegram_id, details_json)
     VALUES (?, ?, ?, ?, ?)
   `).run('DEACTIVATE_MEMBER', 'members', String(memberId), String(actorTelegramId), JSON.stringify({
     fullName: member.full_name,
     reason: cleanReason,
+    wasTreasurer,
+    roleRevoked,
   }));
 
-  return db.prepare('SELECT * FROM members WHERE id = ?').get(memberId);
+  const updated = db.prepare('SELECT * FROM members WHERE id = ?').get(memberId);
+  return {
+    ...updated,
+    wasTreasurer,
+    roleRevoked,
+  };
 }
 
 function getMemberById(id) {
@@ -426,18 +453,18 @@ function rejectRegistrationRequest(requestId, adminTelegramId, reason = 'Decline
 }
 
 async function notifyAdminsNewRegistration(telegram, request) {
-  const { getAdminTelegramIds } = require('./permissions');
+  const { getAdminTelegramIds, getStaffTelegramIds } = require('./permissions');
+  const { getStaffGroupId } = require('./staffArchive');
   const { Markup } = require('telegraf');
   const { escapeHtml } = require('../utils/formatters');
 
-  const adminIds = getAdminTelegramIds();
   const db = getDatabase();
   const existingMember = db.prepare('SELECT * FROM members WHERE telegram_id = ?').get(String(request.telegram_id));
   const isReactivation = existingMember && existingMember.status === 'inactive';
 
   const title = isReactivation
-    ? '🔄 <b>Member Re-activation Request!</b>'
-    : '📥 <b>New Member Registration Request!</b>';
+    ? '🔄 <b>የአባልነት ድጋሚ ማግበር ጥያቄ / Member Re-activation Request!</b>'
+    : '📥 <b>አዲስ የአባልነት ምዝገባ ጥያቄ / New Registration Request!</b>';
 
   const note = isReactivation
     ? '\n⚠️ <i>Applicant was previously deactivated. Approving will re-activate their membership.</i>\n'
@@ -445,29 +472,44 @@ async function notifyAdminsNewRegistration(telegram, request) {
 
   const text =
     `${title}\n\n` +
-    `• <b>Full Name:</b> ${escapeHtml(request.full_name)}\n` +
-    `• <b>Phone:</b> ${escapeHtml(request.phone || 'Not provided')}\n` +
+    `• <b>Full Name / ስም:</b> ${escapeHtml(request.full_name)}\n` +
+    `• <b>Phone / ስልክ:</b> ${escapeHtml(request.phone || 'Not provided')}\n` +
     `• <b>Telegram ID:</b> <code>${escapeHtml(request.telegram_id)}</code>\n` +
     (request.username ? `• <b>Username:</b> @${escapeHtml(request.username)}\n` : '') +
-    `• <b>Submitted:</b> ${escapeHtml(request.created_at)}\n` +
+    `• <b>Submitted / ቀን:</b> ${escapeHtml(request.created_at)}\n` +
     note +
     `\nReview and choose an action:`;
 
   const keyboard = Markup.inlineKeyboard([
     [
-      Markup.button.callback('✅ Approve Member', `reg_approve_${request.id}`),
-      Markup.button.callback('❌ Reject', `reg_reject_${request.id}`),
+      Markup.button.callback('✅ Approve Member / አጽድቅ', `reg_approve_${request.id}`),
+      Markup.button.callback('❌ Reject / ውድቅ አድርግ', `reg_reject_${request.id}`),
     ],
   ]);
 
-  for (const adminId of adminIds) {
+  // 1. Direct notification to all leadership staff (Admins and Treasurers)
+  const recipientIds = new Set([...getAdminTelegramIds(), ...getStaffTelegramIds()]);
+  for (const staffId of recipientIds) {
     try {
-      await telegram.sendMessage(adminId, text, {
+      await telegram.sendMessage(staffId, text, {
         parse_mode: 'HTML',
         ...keyboard,
       });
     } catch (err) {
-      console.warn(`[Registration] Could not send notification to admin ${adminId}:`, err.message);
+      console.warn(`[Registration] Could not send notification to staff member ${staffId}:`, err.message);
+    }
+  }
+
+  // 2. Broadcast directly to Leadership Staff Group (Admin&bot group)
+  const staffGroupId = getStaffGroupId();
+  if (staffGroupId) {
+    try {
+      await telegram.sendMessage(staffGroupId, text, {
+        parse_mode: 'HTML',
+        ...keyboard,
+      });
+    } catch (grpErr) {
+      console.warn(`[Registration] Could not post registration request to staff group ${staffGroupId}:`, grpErr.message);
     }
   }
 }

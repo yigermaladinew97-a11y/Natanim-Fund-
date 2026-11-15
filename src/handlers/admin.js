@@ -1,5 +1,5 @@
 const { Markup } = require('telegraf');
-const { requireAdmin } = require('../middleware/auth');
+const { requireAdmin, requireStaff } = require('../middleware/auth');
 const {
   registerMember,
   deactivateMember,
@@ -82,14 +82,14 @@ function registerAdminHandlers(bot) {
     }
   }
 
-  bot.command('approvals', requireAdmin, handlePendingApprovals);
-  bot.hears(/^(?:📥\s*)?(?:Pending Approvals|ማጽደቂያዎች)$/i, requireAdmin, handlePendingApprovals);
-  bot.action('menu_approvals', requireAdmin, async (ctx) => {
+  bot.command('approvals', requireStaff, handlePendingApprovals);
+  bot.hears(/^(?:📥\s*)?(?:Pending Approvals|ማጽደቂያዎች)$/i, requireStaff, handlePendingApprovals);
+  bot.action('menu_approvals', requireStaff, async (ctx) => {
     await ctx.answerCbQuery();
     await handlePendingApprovals(ctx);
   });
 
-  bot.action(/^reg_approve_(\d+)$/, requireAdmin, async (ctx) => {
+  bot.action(/^reg_approve_(\d+)$/, requireStaff, async (ctx) => {
     await ctx.answerCbQuery();
     const requestId = parseInt(ctx.match[1], 10);
     const adminId = ctx.from.id;
@@ -141,7 +141,7 @@ function registerAdminHandlers(bot) {
     }
   });
 
-  bot.action(/^reg_reject_(\d+)$/, requireAdmin, async (ctx) => {
+  bot.action(/^reg_reject_(\d+)$/, requireStaff, async (ctx) => {
     await ctx.answerCbQuery();
     const requestId = parseInt(ctx.match[1], 10);
     const adminId = ctx.from.id;
@@ -313,9 +313,23 @@ function registerAdminHandlers(bot) {
           reason,
           actorTelegramId: ctx.from.id,
         });
+
+        if (member.wasTreasurer && member.telegram_id) {
+          try {
+            await notifyTreasurerRevoked(ctx.telegram, member.telegram_id);
+          } catch (revErr) {
+            console.warn('[Deactivate] Could not remove treasurer from staff group:', revErr.message);
+          }
+        }
+
+        const roleNote = member.wasTreasurer
+          ? `\n🛡️ <b>Staff Role Removed:</b> Member was relieved of Treasurer duties and removed from the leadership group.\n`
+          : '';
+
         return ctx.reply(
-          `✅ Member <b>${escapeHtml(member.full_name)}</b> (#${member.id}) has been deactivated.\n\n` +
-          `<i>Their status is now inactive. If you also wish to permanently wipe their payment history and obligations, tap below:</i>`,
+          `✅ Member <b>${escapeHtml(member.full_name)}</b> (#${member.id}) has been deactivated.\n` +
+          roleNote +
+          `\n<i>Their status is now inactive. If you also wish to permanently wipe their payment history and obligations, tap below:</i>`,
           {
             parse_mode: 'HTML',
             ...Markup.inlineKeyboard([

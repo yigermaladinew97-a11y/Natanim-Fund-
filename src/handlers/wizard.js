@@ -38,7 +38,7 @@ const { getUserLanguage } = require('../services/i18n');
 const { getPaymentMethodKeyboard, getCancelKeyboard, getCancelReplyKeyboard, getMainMenuKeyboard } = require('../utils/keyboards');
 const { showPaymentConfirmation } = require('./payments');
 const { assignRole } = require('../services/permissions');
-const { notifyTreasurerAppointed, getStaffGroupId } = require('../services/staffArchive');
+const { notifyTreasurerAppointed, notifyTreasurerRevoked, getStaffGroupId } = require('../services/staffArchive');
 const { isTursoConfigured, pushToTurso } = require('../services/tursoService');
 
 const MENU_BUTTON_PATTERNS = [
@@ -70,6 +70,8 @@ const MENU_BUTTON_PATTERNS = [
 
 function registerWizardHandler(bot) {
   async function finishSelfRegistration(ctx, userId, fullName, phone) {
+    const lang = ctx.state?.language || getUserLanguage(userId) || 'am';
+    const isAm = lang === 'am';
     clearSession(userId);
     try {
       const request = createRegistrationRequest({
@@ -79,23 +81,32 @@ function registerWizardHandler(bot) {
         phone,
       });
 
-      await ctx.reply(
-        `🎉 *Registration Request Submitted!*\n\n` +
-        `Thank you, *${fullName}*!\n` +
-        `Your request to join *Natanim Church Fund* has been received.\n\n` +
-        `📋 *Details Submitted:*\n` +
-        `• *Full Name:* ${fullName}\n` +
-        `• *Phone:* ${phone}\n` +
-        `• *Telegram ID:* \`${userId}\`\n\n` +
-        `⏳ *What happens next?*\n` +
-        `The church administrator has received an instant notification to review your request. You will receive a confirmation message right here as soon as it is approved!`,
-        {
-          parse_mode: 'Markdown',
-          ...getMainMenuKeyboard('pending'),
-        }
-      );
+      const confirmText = isAm
+        ? `🎉 <b>የአባልነት ምዝገባ ጥያቄዎ ደርሶናል!</b>\n\n` +
+          `እናመሰግናለን <b>${escapeHtml(fullName)}</b>! 🙏\n` +
+          `ወደ <b>ናታኒም ፈንድ</b> ለመቀላቀል ያቀረቡት ጥያቄ ተመዝግቧል።\n\n` +
+          `📋 <b>ያስገቧቸው ዝርዝሮች፦</b>\n` +
+          `• <b>ሙሉ ስም፦</b> ${escapeHtml(fullName)}\n` +
+          `• <b>ስልክ፦</b> ${escapeHtml(phone)}\n` +
+          `• <b>የቴሌግራም መለያ፦</b> <code>${userId}</code>\n\n` +
+          `⏳ <b>ቀጣይ ሂደት፦</b>\n` +
+          `የቤተክርስቲያን አመራሮች ጥያቄዎን እንዲያጸድቁ ማስታወቂያ ደርሷቸዋል። እንደተፈቀደ ወዲያውኑ እዚህ ይፋዊ ማረጋገጫ ይደርስዎታል!`
+        : `🎉 <b>Registration Request Submitted!</b>\n\n` +
+          `Thank you, <b>${escapeHtml(fullName)}</b>! 🙏\n` +
+          `Your request to join <b>Natanim Church Fund</b> has been received.\n\n` +
+          `📋 <b>Details Submitted:</b>\n` +
+          `• <b>Full Name:</b> ${escapeHtml(fullName)}\n` +
+          `• <b>Phone:</b> ${escapeHtml(phone)}\n` +
+          `• <b>Telegram ID:</b> <code>${userId}</code>\n\n` +
+          `⏳ <b>What happens next?</b>\n` +
+          `Church leadership has received a notification to review your request. You will receive a confirmation message right here as soon as it is approved!`;
 
-      // Notify administrators
+      await ctx.reply(confirmText, {
+        parse_mode: 'HTML',
+        ...getMainMenuKeyboard('pending', isAm ? 'am' : 'en'),
+      });
+
+      // Notify administrators & staff group
       try {
         await notifyAdminsNewRegistration(ctx.telegram, request);
       } catch (adminErr) {
@@ -107,7 +118,10 @@ function registerWizardHandler(bot) {
         pushToTurso().catch((e) => console.warn('[Turso] Async registration push notice:', e.message));
       }
     } catch (err) {
-      return ctx.reply(`❌ Registration submission failed: ${err.message}`, getMainMenuKeyboard('unregistered'));
+      return ctx.reply(
+        isAm ? `❌ የምዝገባ ሂደት አልተሳካም፦ ${err.message}` : `❌ Registration submission failed: ${err.message}`,
+        getMainMenuKeyboard('unregistered', isAm ? 'am' : 'en')
+      );
     }
   }
 
@@ -407,11 +421,13 @@ function registerWizardHandler(bot) {
     const text = ctx.message.text.trim();
 
     // Check if user clicked Cancel while in a wizard
-    if (/^(?:❌\s*)?Cancel(?: Operation)?$/i.test(text) || text.toLowerCase() === 'cancel') {
+    if (/^(?:❌\s*)?(?:Cancel(?: Operation)?|ሰርዝ)$/i.test(text) || text.toLowerCase() === 'cancel' || text === 'ሰርዝ') {
+      const lang = session.lang || ctx.state?.language || getUserLanguage(userId) || 'am';
+      const isAm = lang === 'am';
       clearSession(userId);
       const userRole = ctx.state?.role || (ctx.state?.member ? 'member' : 'unregistered');
-      return ctx.reply('❌ Current operation has been cancelled.', {
-        ...getMainMenuKeyboard(userRole),
+      return ctx.reply(isAm ? '❌ ክንውኑ ተሰርዟል።' : '❌ Current operation has been cancelled.', {
+        ...getMainMenuKeyboard(userRole, isAm ? 'am' : 'en'),
       });
     }
 
@@ -425,32 +441,52 @@ function registerWizardHandler(bot) {
     // SELF-REGISTRATION WIZARD (Name -> Phone)
     // ----------------------------------------------------
     if (session.step === 'SELF_REGISTER_WAIT_NAME') {
+      const lang = session.lang || ctx.state?.language || getUserLanguage(userId) || 'am';
+      const isAm = lang === 'am';
       const cleanName = sanitizeText(text, 100);
       if (!cleanName || cleanName.length < 2) {
-        return ctx.reply('❌ Please enter a valid full name (at least 2 characters):', getCancelReplyKeyboard());
+        return ctx.reply(
+          isAm ? '❌ እባክዎ ትክክለኛ ሙሉ ስም ያስገቡ (ቢያንስ 2 ፊደላት)፦' : '❌ Please enter a valid full name (at least 2 characters):',
+          getCancelReplyKeyboard(isAm ? 'am' : 'en')
+        );
       }
-      setSession(userId, { ...session, step: 'SELF_REGISTER_WAIT_PHONE', fullName: cleanName });
+      setSession(userId, { ...session, step: 'SELF_REGISTER_WAIT_PHONE', fullName: cleanName, lang });
       return ctx.reply(
-        `👤 *Name:* ${cleanName}\n\n` +
-        `📞 *Step 2/2: Phone Number*\n` +
-        `Please provide your phone number so church leadership can reach and verify your membership.\n\n` +
-        `Tap the *📱 Share My Phone Number* button below, or type your phone number directly (e.g. \`0911223344\`):`,
-        Markup.keyboard([
-          [Markup.button.contactRequest('📱 Share My Phone Number')],
-          ['❌ Cancel Operation'],
-        ]).resize().oneTime()
+        isAm
+          ? `👤 *ስም፦* ${cleanName}\n\n` +
+            `📞 *ደረጃ 2/2፦ ስልክ ቁጥር*\n` +
+            `እባክዎ አመራሮች እርስዎን እንዲያገኙ ስልክ ቁጥርዎን ያስገቡ።\n\n` +
+            `ከታች ያለውን *📱 ስልክ ቁጥሬን አጋራ* የሚለውን ይጫኑ ወይም በቀጥታ በጽሑፍ ይጻፉ (ለምሳሌ \`0911223344\`):`
+          : `👤 *Name:* ${cleanName}\n\n` +
+            `📞 *Step 2/2: Phone Number*\n` +
+            `Please provide your phone number so church leadership can reach and verify your membership.\n\n` +
+            `Tap the *📱 Share My Phone Number* button below, or type your phone number directly (e.g. \`0911223344\`):`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.keyboard([
+            [Markup.button.contactRequest(isAm ? '📱 ስልክ ቁጥሬን አጋራ' : '📱 Share My Phone Number')],
+            [isAm ? '❌ ሰርዝ' : '❌ Cancel Operation'],
+          ]).resize().oneTime(),
+        }
       );
     }
 
     if (session.step === 'SELF_REGISTER_WAIT_PHONE') {
+      const lang = session.lang || ctx.state?.language || getUserLanguage(userId) || 'am';
+      const isAm = lang === 'am';
       const cleanPhone = sanitizeText(text, 30);
       if (!cleanPhone || cleanPhone.length < 7) {
         return ctx.reply(
-          '❌ Please enter a valid phone number (at least 7 digits) or tap the "Share My Phone Number" button below:',
-          Markup.keyboard([
-            [Markup.button.contactRequest('📱 Share My Phone Number')],
-            ['❌ Cancel Operation'],
-          ]).resize().oneTime()
+          isAm
+            ? '❌ እባክዎ ትክክለኛ ስልክ ቁጥር (ቢያንስ 7 አሃዞች) ያስገቡ ወይም «ስልክ ቁጥሬን አጋራ» የሚለውን ይጫኑ፦'
+            : '❌ Please enter a valid phone number (at least 7 digits) or tap the "Share My Phone Number" button below:',
+          {
+            parse_mode: 'Markdown',
+            ...Markup.keyboard([
+              [Markup.button.contactRequest(isAm ? '📱 ስልክ ቁጥሬን አጋራ' : '📱 Share My Phone Number')],
+              [isAm ? '❌ ሰርዝ' : '❌ Cancel Operation'],
+            ]).resize().oneTime(),
+          }
         );
       }
       return finishSelfRegistration(ctx, userId, session.fullName, cleanPhone);
@@ -646,11 +682,24 @@ function registerWizardHandler(bot) {
           actorTelegramId: userId,
         });
 
+        if (member.wasTreasurer && member.telegram_id) {
+          try {
+            await notifyTreasurerRevoked(ctx.telegram, member.telegram_id);
+          } catch (revErr) {
+            console.warn('[Deactivate] Could not remove treasurer from staff group:', revErr.message);
+          }
+        }
+
+        const roleNote = member.wasTreasurer
+          ? `\n🛡️ <b>Staff Role Removed:</b> Member was relieved of Treasurer duties and removed from the leadership group.\n`
+          : '';
+
         return ctx.reply(
           `✅ Member <b>${escapeHtml(member.full_name)}</b> (#${member.id}) has been deactivated.\n\n` +
           `• <b>Reason:</b> ${escapeHtml(cleanReason)}\n` +
-          `• <b>Status:</b> 🔴 Inactive\n\n` +
-          `<i>If you also wish to permanently delete their payment history and obligations, tap below:</i>`,
+          `• <b>Status:</b> 🔴 Inactive\n` +
+          roleNote +
+          `\n<i>If you also wish to permanently delete their payment history and obligations, tap below:</i>`,
           {
             parse_mode: 'HTML',
             ...Markup.inlineKeyboard([
@@ -774,27 +823,6 @@ function registerWizardHandler(bot) {
           ...Markup.inlineKeyboard(confirmButtons),
         }
       );
-    }
-
-    // ----------------------------------------------------
-    // DEACTIVATE REASON WIZARD
-    // ----------------------------------------------------
-    if (session.step === 'DEACTIVATE_WAIT_REASON') {
-      const memberId = session.memberId;
-      clearSession(userId);
-      try {
-        const member = deactivateMember({
-          memberId,
-          reason: text,
-          actorTelegramId: userId,
-        });
-        return ctx.reply(`✅ Member *${member.full_name}* (#${member.id}) has been deactivated. Historical records have been preserved.`, {
-          parse_mode: 'Markdown',
-          ...getMainMenuKeyboard(ctx.state?.role),
-        });
-      } catch (err) {
-        return ctx.reply(`❌ Deactivation failed: ${err.message}`);
-      }
     }
 
     // ----------------------------------------------------
