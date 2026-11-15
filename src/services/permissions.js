@@ -42,7 +42,7 @@ function assignRole(telegramId, role, assignedBy) {
 
   const existing = db.prepare('SELECT role FROM roles WHERE telegram_id = ?').get(String(telegramId));
   if (existing) {
-    db.prepare('UPDATE roles SET role = ?, assigned_by = ?, updated_at = datetime("now") WHERE telegram_id = ?')
+    db.prepare("UPDATE roles SET role = ?, assigned_by = ?, updated_at = datetime('now') WHERE telegram_id = ?")
       .run(role, String(assignedBy), String(telegramId));
   } else {
     db.prepare('INSERT INTO roles (telegram_id, role, assigned_by) VALUES (?, ?, ?)')

@@ -131,6 +131,20 @@ test('Authentication, Roles & Authorization Tests', async (t) => {
     assert.strictEqual(isStaff(treasurerId), false);
   });
 
+  await t.test('5. Re-assigning or updating role for existing user executes UPDATE without SQL error', () => {
+    // Initial insert
+    assignRole('555666777', 'treasurer', adminId);
+    assert.strictEqual(getUserRole('555666777'), 'treasurer');
+
+    // Update existing record (exercises UPDATE roles SET ... updated_at = datetime('now'))
+    assignRole('555666777', 'admin', adminId);
+    assert.strictEqual(getUserRole('555666777'), 'admin');
+
+    // Re-assign again to treasurer
+    assignRole('555666777', 'treasurer', adminId);
+    assert.strictEqual(getUserRole('555666777'), 'treasurer');
+  });
+
   cleanup();
 });
 
